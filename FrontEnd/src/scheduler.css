@@ -1,0 +1,432 @@
+/* ===================== TOKENS ===================== */
+:root{
+    --bg: #f8fafc; /* slate-50 */
+    --card: #ffffff;
+    --ink-900: #0f172a;
+    --ink-800: #1e293b;
+    --ink-700: #334155;
+    --ink-600: #475569;
+    --ink-500: #64748b;
+    --ink-200: #e2e8f0;
+    --ink-100: #f1f5f9;
+    --border: #e5e7eb;
+    --shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    --radius-xl: 16px;
+    --radius-2xl: 20px;
+}
+
+/* ===================== BASE ===================== */
+*{ box-sizing:border-box }
+html,body,#root{ height:100%;
+    min-width:1400px;}
+body{
+    margin-left:150px;
+    min-width:1400px;
+    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+    color:var(--ink-800);
+    background:var(--bg);
+}
+.modal-overlay{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(0,0,0,.5);
+    display:flex;align-items:center;justify-content:center;
+    z-index:50;
+}
+.modal{
+    background:#fff;
+    border-radius:12px;
+    padding:20px;
+    width:320px;
+    box-shadow:0 12px 30px rgba(0,0,0,.2);
+}
+
+/* 与 Tailwind 的 max-w-7xl mx-auto px-4 等价 */
+.container{
+    position:relative;
+    max-width:1120px;
+    margin:0 auto;
+    padding:0 16px;
+}
+
+.app{ min-height:90vh; width:100% }
+
+/* ===================== HEADER ===================== */
+.header{
+    position:sticky; top:0; z-index:10;
+    background:rgba(255,255,255,.8);
+    backdrop-filter:saturate(160%) blur(8px);
+    border-bottom:1px solid var(--border);
+}
+.header__inner{ display:flex; align-items:center; justify-content:space-between; padding:12px 0 }
+.brand{ display:flex; gap:12px; align-items:center }
+.brand__icon{ padding:8px; border-radius:12px; background:var(--ink-900); color:#fff }
+.brand__title{ margin:0; font-weight:600; color:var(--ink-900); font-size:16px }
+.brand__subtitle{ margin:0; color:var(--ink-500); font-size:12px }
+.header__actions{ display:flex; gap:8px }
+
+/* ===================== BUTTONS ===================== */
+.btn{ display:inline-flex; align-items:center; gap:8px; border-radius:12px; border:1px solid var(--border); padding:8px 12px; font-size:14px; cursor:pointer; user-select:none }
+.btn--sm{ padding:8px 12px }
+.btn--primary{ background:var(--ink-900); color:#fff; border-color:var(--ink-900) }
+.btn--outline{ background:#fff; color:var(--ink-800) }
+
+/* ===================== TAG / CHIPS ===================== */
+.tag{ display:inline-block; padding:4px 8px; border-radius:10px; font-size:12px; border:1px solid var(--ink-200) }
+.tag--dark{ background:var(--ink-900); color:#fff; border-color:var(--ink-900) }
+.chip{ padding:4px 8px; border-radius:999px; border:1px solid }
+.chip--indigo{ background:rgba(79,70,229,.08); color:#3730a3; border-color:#c7d2fe }
+
+/* ===================== LAYOUT ===================== */
+/* 默认单栏（移动端） */
+.layout{
+    display:grid;
+    grid-template-columns: 1fr;
+    gap:16px;
+    padding:24px 0;
+}
+
+/* 宽屏：两栏自适应，整体居中由外层 .container 控制 */
+@media (min-width: 1024px) {
+    /* 左栏：最小 400px，理想 32vw，最大 560px；右栏吃剩余 */
+    .layout{
+        grid-template-columns: clamp(400px, 32vw, 560px) minmax(0, 1fr);
+        column-gap:16px;
+    }
+    .layout__left { grid-column:auto; }
+    .layout__right{ grid-column:auto; }
+}
+
+/* ===================== SECTION ===================== */
+.section{
+    background:var(--card);
+    border:1px solid #f1f5f9;
+    border-radius:var(--radius-2xl);
+    box-shadow:var(--shadow);
+    padding:16px;
+    margin-bottom:16px;
+}
+.section__head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px }
+.section__title{ margin:0; font-weight:600; color:var(--ink-800) }
+
+/* ===================== CARDS ===================== */
+.card{ border:1px solid var(--border); border-radius:16px; padding:12px; background:#fff }
+.card--soft{ background:#f8fafc }
+.plancard{ border:1px solid var(--border); border-radius:20px; padding:16px; background:#fff }
+.plancard--active{ background:var(--ink-900); color:#fff; border-color:var(--ink-900) }
+.meta{ padding:4px 8px; border-radius:999px; font-size:12px; background:#f1f5f9; color:var(--ink-700); border:1px solid var(--border) }
+.meta--active{ background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.24) }
+
+/* ===================== TIMELINE ===================== */
+.grid-15{ display:grid; grid-template-columns:repeat(15,1fr) }
+.hours__cell{ font-size:10px; color:#64748b; text-align:right }
+.timelineitem{ border:1px solid var(--border); border-radius:16px; padding:12px; background:#fff }
+/* 近似 Tailwind 的浅色背景块 */
+.timelineitem--indigo{ background:#eef2ff }
+.timelineitem--emerald{ background:#ecfdf5 }
+.timelineitem--sky{ background:#e0f2fe }
+.timelineitem--rose{ background:#ffe4e6 }
+.timelineitem--amber{ background:#fef3c7 }
+
+/* ===================== PILLS & BADGES ===================== */
+.pill{ padding:6px 8px; border-radius:999px; background:#fff; color:var(--ink-600); font-size:12px; border:1px solid var(--border) }
+.badge{ font-size:12px; padding:2px 6px; border-radius:8px; background:#fff; border:1px solid var(--border) }
+
+/* ===================== PROGRESS ===================== */
+.progress{ height:8px; border-radius:999px; background:#e2e8f0; overflow:hidden }
+.progress--lg{ height:12px }
+.progress__bar{ height:100%; background:#94a3b8 }
+
+/* ===================== INPUTS ===================== */
+.input{ border:1px solid var(--border); border-radius:12px; padding:8px 12px; background:#fff; font-size:14px }
+.input--ro{ color:var(--ink-700) }
+
+/* ===================== CHAT ===================== */
+.chatbubble{ max-width:85%; border-radius:12px; padding:8px 12px; font-size:14px }
+.chatbubble--assistant{ background:#f1f5f9; color:#0f172a }
+.chatbubble--user{ background:#0f172a; color:#fff; margin-left:auto }
+
+/* ===================== MODE BUTTON ===================== */
+.modebtn{ display:inline-flex; gap:8px; align-items:center; padding:8px 12px; border-radius:12px; border:1px solid var(--border); background:#fff; color:var(--ink-700); font-size:14px }
+.modebtn--active{ background:#0f172a; color:#fff; border-color:#0f172a }
+
+/* ===================== WATERMARK ===================== */
+.watermark{ position:fixed; right:12px; bottom:12px; font-size:10px; padding:4px 8px; border-radius:6px; background:#0f172a; color:#fff; opacity:.8 }
+
+/* ===================== UTILITIES ===================== */
+.row{ display:flex }
+.row.between{ justify-content:space-between }
+.align-center{ align-items:center }
+.gap-1{ gap:4px }
+.gap-2{ gap:8px }
+.gap-3{ gap:12px }
+.stack-2 > * + *{ margin-top:8px }
+.mt-1{ margin-top:4px }
+.mt-3{ margin-top:12px }
+.mt-4{ margin-top:16px } /* 你在 JSX 用到了 */
+.pt-2{ padding-top:8px }
+.py-1{ padding-top:4px; padding-bottom:4px }
+.text-sm{ font-size:14px }
+.text-xs{ font-size:12px }
+.text-200{ color:#e5e7eb }
+.text-700{ color:var(--ink-700) }
+.text-900{ color:var(--ink-900) }
+.text-muted{ color:var(--ink-600) }
+.text-right{ text-align:right }
+.icon-16{ width:16px; height:16px }
+.grid-3{ display:grid; grid-template-columns:repeat(3,1fr) }
+.grid-6{ display:grid; grid-template-columns:repeat(6,1fr) }
+.grid-12{ display:grid; grid-template-columns:repeat(12,1fr) }
+.col-span-2{ grid-column:span 2 }
+.col-span-3{ grid-column:span 3 }
+.col-span-4{ grid-column:span 4 }
+.col-span-6{ grid-column:span 6 }
+.w-full{ width:100% }
+.flex-1{ flex:1 }
+.w-28{ width:7rem }
+.w-10{ width:2.5rem }
+.fw-500{ font-weight:500 }
+.fw-600{ font-weight:600 }
+
+/* 列表样式（对应原 Tailwind 的 list-disc ml-5 space-y-1） */
+.list{ list-style:disc; margin-left:1.25rem; padding-left:0 }
+.list li{ margin:4px 0; color:var(--ink-600) }
+/* 美化 slider */
+.slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(
+            to right,
+            var(--ink-600) 0%,
+            var(--ink-600) calc(var(--value, 0) * 1%),
+            var(--ink-200) calc(var(--value, 0) * 1%),
+            var(--ink-200) 100%
+    );
+    outline: none;
+    cursor: pointer;
+}
+
+/* Chrome / Safari 滑块 */
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;   /* ✅ 再小一点 */
+    height: 10px;
+    border-radius: 2px;
+    background: var(--ink-600);
+    cursor: pointer;
+    border: none;
+    margin-top: -2px; /* 垂直居中 */
+    transition: transform 0.15s ease;
+}
+.slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+/* Firefox 滑块 */
+.slider::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--ink-600);
+    cursor: pointer;
+    border: none;
+    transition: transform 0.15s ease;
+}
+.slider::-moz-range-thumb:hover {
+    transform: scale(1.2);
+}
+
+/* Firefox 轨道 */
+.slider::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--ink-200);
+}
+/* 外框，风格跟 input 一致 */
+.select-box {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 12px; /* 和 .input 圆角一致 */
+    padding: 8px 12px;
+    background: var(--card);
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+
+    margin-top: 12px;
+}
+
+/* hover / focus 效果保持跟 input 一致 */
+.select-box:hover {
+    border-color: var(--ink-500);
+}
+.select-box.open,
+.select-box:focus-within {
+    border-color: var(--ink-700);
+    box-shadow: 0 0 0 2px rgba(51,65,85,0.15);
+}
+
+/* 显示选中项 */
+.select-display {
+    font-size: 14px;
+    color: var(--ink-800);
+}
+
+/* 下拉列表 */
+.select-options {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    z-index: 20;
+    max-height: 220px;      /* 限制高度，避免太长 */
+    overflow-y: auto;       /* 可滚动 */
+}
+
+/* 单个选项 */
+.option {
+    padding: 8px 12px;
+    font-size: 14px;
+    color: var(--ink-800);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.option:hover {
+    background: var(--ink-100);
+}
+.option.selected {
+    background: var(--ink-900);
+    color: #fff;
+}
+.form-field {
+    margin-top: 12px;
+}
+.timelinebar {
+    border-radius: 8px;
+    padding: 4px;
+    font-size: 12px;
+    background: #e0e7ff; /* 默认背景 */
+}
+.timelinebar--indigo { background: #e0e7ff; }
+.timelinebar--emerald { background: #d1fae5; }
+.timelinebar--sky { background: #e0f2fe; }
+.timelinebar--rose { background: #ffe4e6; }
+.timelinebar--amber { background: #fef3c7; }
+
+/* 168 列，每列代表 5 分钟 */
+.timeline-grid{
+    display: grid;
+    grid-template-columns: repeat(168, 1fr);
+    gap: 8px 6px; /* 行间距 8、列间距 6，可自行调 */
+    position: relative;
+}
+
+/* 小时标签在网格里对齐铺开（浅灰小字） */
+.timeline-hour{
+    font-size: 11px;
+    color: var(--ink-500);
+    text-align: left;
+}
+
+/* 事件条：改成“条状”，只占对应时间段 */
+.timelinebar{
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    background: #fff;
+    box-shadow: var(--shadow);
+    align-self: start; /* 让条目贴网格顶部 */
+}
+
+.timelinebar--indigo{ background:#eef2ff }
+.timelinebar--emerald{ background:#ecfdf5 }
+.timelinebar--sky{ background:#e0f2fe }
+.timelinebar--rose{ background:#ffe4e6 }
+.timelinebar--amber{ background:#fef3c7 }
+
+/* === 动态行高 + 条子容器设置（允许根据内容增高） === */
+.timeline-grid { --lane-min-h: 76px; }
+.timelinebar{
+    position: relative;
+    display: grid;
+    grid-template-rows: auto 1fr;          /* 标题 + 底部行 */
+    gap: 6px;
+    min-height: var(--lane-min-h);         /* 最小高度 */
+    height: auto;                          /* 允许变高 */
+    padding: 10px 12px;
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+    container-type: inline-size;           /* ✅ 开启容器查询，便于自适应字号 */
+}
+.timelinebar:hover{
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(15,23,42,.08);
+}
+
+/* 标题：按变量控制行数，超出裁剪 */
+.timelinebar__title{
+    font-weight: 600;
+    line-height: 1.15;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--title-lines, 2);  /* ✅ 动态行数 */
+    overflow: hidden;
+}
+
+/* 时间行单行显示，防止换行撑高 */
+.timelinebar__time{ white-space: nowrap; line-height: 1.1; }
+
+/* 地点 pill 超长省略，不挤爆布局 */
+.pill--truncate{
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 编号圆点（保持原有风格） */
+.timelinebar__index{
+    position: absolute; top: -10px; left: -12px;
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px; background: #fff; color: var(--ink-900);
+    border: 1px solid var(--border); font-weight: 600; font-size: 12px;
+    box-shadow: 0 6px 14px rgba(15,23,42,.06);
+}
+
+/* === 字体自适应：条子变窄时自动降字号（容器查询） === */
+@container (max-width: 220px) {
+    .timelinebar { font-size: 13px; }
+    .timelinebar__title { -webkit-line-clamp: max(1, calc(var(--title-lines, 2) - 1)); }
+}
+@container (max-width: 180px) {
+    .timelinebar { font-size: 12px; }
+}
+@container (max-width: 150px) {
+    .timelinebar { font-size: 11px; }
+    .pill--truncate { max-width: 60%; } /* 更宽容一点 */
+}
+/* 大号弹窗容器（复用你的 modal-overlay） */
+.modal--xl{
+    width: 92vw;
+    height: 84vh;
+    min-width: 1400px;
+    display: flex;
+    flex-direction: column;
+}
+.timeline-fullbody{
+    flex: 1;
+    min-height: 0;   /* 允许内部 grid 正常滚动 */
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px;
+}
+
+
