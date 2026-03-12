@@ -20,11 +20,6 @@ Evaluation results show that our solver produces more feasible and user-centric 
 
 ## SECTION 3 : CREDITS / PROJECT CONTRIBUTION
 
-| Official Full Name | Student ID | Work Items (Who Did What) | Email |
-| :------------------- | :----------: | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------- |
-| Zhu Kaixu | A0328919M | Full-stack system development, multi-agent implementation, custom solver development, agent logic & API integration, system integration and testing, demo video, and writing Section 3 and Section 4 of report | e1553246@u.nus.edu |
-| Chen Xinyu | A0317887J | Business problem analysis, requirement research, use case design, and writing Section 1, 2, 5 of report | e1519747@u.nus.edu |
-| [YOUR NAME] | [STUDENT ID] | Guardrails Agent design and implementation (prompt injection detection, PII filtering, AI Security Risk Register), adversarial security test suite, MLSecOps CI/CD pipeline (GitHub Actions), dependency vulnerability scanning, and structured audit logging | [YOUR EMAIL] |
 
 ---
 
