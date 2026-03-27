@@ -1,5 +1,6 @@
 # app/agent/graph_compare.py
-from typing import TypedDict, List, Optional
+from typing import TypedDict, List, Optional, Annotated
+import operator
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -22,6 +23,7 @@ class CompareState(TypedDict):
     tuned_mode: Optional[str]
     plan_ai: Optional[list]
     messages: list
+    # messages: Annotated[list, operator.add] 
 
 def load_graph(s: CompareState):
     return {"G": load_travel_graph(s.get("commute_mode","auto"))}
@@ -83,8 +85,13 @@ def build_graph():
     g.add_node("ai_tune", ai_tune)
     g.add_node("ai_plan", ai_plan)
     g.set_entry_point("load_graph")
-    g.add_edge("load_graph","baseline_travel")
-    g.add_edge("load_graph","baseline_b")
+    # g.add_edge("load_graph","baseline_travel")
+    # g.add_edge("load_graph","baseline_b")
+    g.add_conditional_edges(
+        "load_graph",
+        lambda s: ["baseline_travel", "baseline_b"],
+        {"baseline_travel": "baseline_travel", "baseline_b": "baseline_b"}
+    )
     g.add_edge("baseline_travel","ai_tune")
     g.add_edge("baseline_b","ai_tune")
     g.add_edge("ai_tune","ai_plan")
