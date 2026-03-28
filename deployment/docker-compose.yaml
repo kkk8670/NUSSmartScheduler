@@ -1,46 +1,41 @@
-version: "3.9"
-
 services:
 
   frontend:
-      build:
-        context: ../FrontEnd        
-        dockerfile: Dockerfile      
-      image: smart_scheduler_frontend:latest
-      container_name: smart_scheduler_frontend
-      ports:
-        - "5173:5173"              
-      environment:
-        VITE_BACKEND_URL: http://localhost:8000
-      volumes:
-        - ../FrontEnd:/app        
+    build:
+      context: ../FrontEnd
+      args:
+        VITE_BACKEND_URL: ""
+    image: smart_scheduler_frontend:latest
+    container_name: smart_scheduler_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend     
 
   backend:
     build:
-      context: ../BackEnd    
-      dockerfile: Dockerfile
+      context: ../BackEnd
     image: smart_scheduler_backend:latest
     container_name: smart_scheduler_backend
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     env_file:
-      - ../BackEnd/.env    
+      - ../BackEnd/.env
+    environment:
+      DB_URL: mysql+pymysql://root:${MYSQL_PASSWORD:-root123}@db:3306/${MYSQL_DATABASE:-nus_event}
     depends_on:
-      - db
-    volumes:
-      - ../BackEnd:/app   
+      - db 
 
   db:
     image: mysql:8.1
     container_name: smart_scheduler_mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-nus_event}
     ports:
       - "3306:3306"
     volumes:
-      - ./nus_event.sql:/docker-entrypoint-initdb.d/nus_event.sql
+      - ./sql/nus_event.sql:/docker-entrypoint-initdb.d/nus_event.sql:ro
       - mysql_data:/var/lib/mysql
 
 volumes:
