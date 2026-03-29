@@ -1,0 +1,61 @@
+# .github/workflows/cd-deploy.yaml
+name: CD – Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deploy target"
+        required: true
+        default: "staging"
+        type: choice
+        options: [staging, production]
+
+env:
+  BACKEND_IMAGE: smart_scheduler_backend
+  FRONTEND_IMAGE: smart_scheduler_frontend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: |
+          docker build -t $BACKEND_IMAGE:${{ github.sha }} ./BackEnd
+          docker build -t $FRONTEND_IMAGE:${{ github.sha }} --build-arg VITE_BACKEND_URL="" ./FrontEnd
+
+      # ── staging: build only to verify that the image can be built successfully ──
+      - name: Staging summary
+        if: inputs.environment == 'staging'
+        run: |
+          echo "## Staging Build ✅" >> $GITHUB_STEP_SUMMARY
+          echo "Images built successfully. Ready for production deploy." >> $GITHUB_STEP_SUMMARY
+
+      # ── production: push image + deploy to K8s groups ──
+      - name: Push images to registry
+        if: inputs.environment == 'production'
+        run: |
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ vars.REGISTRY_URL }} -u ${{ vars.REGISTRY_USER }} --password-stdin
+          docker tag $BACKEND_IMAGE:${{ github.sha }} ${{ vars.REGISTRY_URL }}/$BACKEND_IMAGE:${{ github.sha }}
+          docker tag $FRONTEND_IMAGE:${{ github.sha }} ${{ vars.REGISTRY_URL }}/$FRONTEND_IMAGE:${{ github.sha }}
+          docker push ${{ vars.REGISTRY_URL }}/$BACKEND_IMAGE:${{ github.sha }}
+          docker push ${{ vars.REGISTRY_URL }}/$FRONTEND_IMAGE:${{ github.sha }}
+
+      - name: Deploy to K8s
+        if: inputs.environment == 'production'
+        run: |
+          kubectl apply -f deployment/k8s/
+          kubectl set image deployment/backend backend=${{ vars.REGISTRY_URL }}/$BACKEND_IMAGE:${{ github.sha }} -n smart-scheduler
+          kubectl set image deployment/frontend frontend=${{ vars.REGISTRY_URL }}/$FRONTEND_IMAGE:${{ github.sha }} -n smart-scheduler
+          kubectl rollout status deployment/backend -n smart-scheduler --timeout=120s
+          kubectl rollout status deployment/frontend -n smart-scheduler --timeout=120s
+
+      - name: Deploy summary
+        run: |
+          echo "## Deploy Info" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image tag:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

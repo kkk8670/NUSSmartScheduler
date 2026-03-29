@@ -1,0 +1,40 @@
+# .github/workflows/ci-frontend.yaml
+name: CI – Frontend
+
+on:
+  push:
+    branches: [main]
+    paths: [FrontEnd/**]
+  pull_request:
+    branches: [main]
+    paths: [FrontEnd/**]
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FrontEnd
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  build-image:
+    needs: lint-and-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build frontend image
+        run: docker build -t smart_scheduler_frontend:${{ github.sha }} --build-arg VITE_BACKEND_URL="" ./FrontEnd

@@ -1,3 +1,10 @@
+# docker-compose.yaml – basic setting
+#   pre run: ln -s ../.env .env
+# 
+#   dev (only DB):   docker compose up db
+#   dev (DB + be):   docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up
+#   prod (fe + be + DB):   docker compose up --build
+
 services:
 
   frontend:
@@ -10,7 +17,7 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend     
+      - backend
 
   backend:
     build:
@@ -20,18 +27,21 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ../BackEnd/.env
+      - ../.env
     environment:
-      DB_URL: mysql+pymysql://root:${MYSQL_PASSWORD:-root123}@db:3306/${MYSQL_DATABASE:-nus_event}
+      DB_URL: ${DB_URL}
     depends_on:
-      - db 
+      - db
 
   db:
-    image: mysql:8.1
+    image: mysql:8.0
     container_name: smart_scheduler_mysql
+    env_file:
+      - ../.env
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root123}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-nus_event}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZNAME}
+    command: --default-time-zone=+08:00
     ports:
       - "3306:3306"
     volumes:
