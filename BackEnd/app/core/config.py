@@ -26,10 +26,16 @@ class Settings(BaseSettings):
     AGENT_ENABLE_TOOLS: bool = Field(True, env="AGENT_ENABLE_TOOLS")
     AGENT_ENABLE_RAG: bool = Field(False, env="AGENT_ENABLE_RAG")
     RAG_INDEX_DIR: str | None = Field(None, env="RAG_INDEX_DIR")
+    # === Weaviate ===
+    # Docker/K8s setting service_name（like "weaviate"）；do not set in local dev, default AS localhost
+    WEAVIATE_HOST: str = Field("localhost", env="WEAVIATE_HOST")
+    WEAVIATE_HTTP_PORT: int = Field(8080, env="WEAVIATE_HTTP_PORT")
+    WEAVIATE_GRPC_PORT: int = Field(50051, env="WEAVIATE_GRPC_PORT")
     # pydantic v2 配置方式
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore"
     )
 
 settings = Settings()

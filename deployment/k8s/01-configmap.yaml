@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: smart-scheduler
+data:
+  MYSQL_DATABASE: "nus_event"
+  TZNAME: "Asia/Singapore"
+  AGENT_MODEL: "gpt-4o-mini-2024-07-18"
+  AGENT_TEMPERATURE: "0.2"
+  AGENT_ENABLE_TOOLS: "true"
+  AGENT_ENABLE_RAG: "false"
+  WEAVIATE_HOST: "weaviate-svc"
+  WEAVIATE_HTTP_PORT: "8080"
+  WEAVIATE_GRPC_PORT: "50051"

@@ -1,7 +1,15 @@
 import weaviate
 from weaviate.classes.config import Property, DataType, Configure, VectorDistances
+from app.core.config import settings
 
-client = weaviate.WeaviateClient("http://localhost:8080")
+client = weaviate.connect_to_custom(
+    http_host=settings.WEAVIATE_HOST,
+    http_port=settings.WEAVIATE_HTTP_PORT,
+    http_secure=False,
+    grpc_host=settings.WEAVIATE_HOST,
+    grpc_port=settings.WEAVIATE_GRPC_PORT,
+    grpc_secure=False,
+)
 
 COLL = "MemChunk"
 
