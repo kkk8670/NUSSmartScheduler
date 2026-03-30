@@ -23,6 +23,10 @@ import "./scheduler.css";
 
 const API_BASE = "http://localhost:8000"; // ← 改成你的后端地址
 
+const DAY_START_MIN = 8 * 60;     // 08:00 -> 480
+const SLOT_MIN = 5;               // 5 分钟一个格
+const TOTAL_COLS = (22 - 8) * 60 / SLOT_MIN; // 14h * 60 / 5 = 168
+
 function hhmmToMinutes(hhmm) {
   const [hh, mm] = hhmm.split(":").map(Number);
   return hh * 60 + mm;
@@ -35,7 +39,7 @@ function spanSlots(startHHMM, endHHMM) {
   const e = hhmmToSlot(endHHMM);
   return Math.max(1, e - s);
 }
-  
+
 export default function NUSSmartSchedulerStaticV2() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [sliders, setSliders] = useState({
@@ -51,11 +55,12 @@ export default function NUSSmartSchedulerStaticV2() {
   const [plans, setPlans] = useState([]);
   const [timeline, setTimeline] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
-  const [loadingTimeline, setLoadingTimeline] = useState(true);
+  const [_loadingTimeline, setLoadingTimeline] = useState(true);
   const [colW, setColW] = useState(12);     // 每个 5 分钟格子的像素宽度（8~28）
-  const [laneH, setLaneH] = useState(76);   // 每一“车道”的最小高度
+  // const [laneH, setLaneH] = useState(76);   // 每一“车道”的最小高度
   const [showFull, setShowFull] = useState(false);
 
+  const laneH = 76;
 
   // 顶部定义
   const fullRef = useRef(null);
@@ -80,7 +85,7 @@ export default function NUSSmartSchedulerStaticV2() {
        const minPx = 140; // 最短事件至少 140px
        const suggested = Math.min(28, Math.max(8, Math.ceil(minPx / minSpan)));
        if (suggested > colW) setColW(suggested);
-     }, [timeline, colW, spanSlots]);
+     }, [timeline, colW]);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -106,10 +111,6 @@ export default function NUSSmartSchedulerStaticV2() {
   // 在组件函数顶部 useState 部分加上：
   const [planTimelines, setPlanTimelines] = useState([]); // array of timelines
   const [activePlan, setActivePlan] = useState(0);        // index of selected plan
-
-  const DAY_START_MIN = 8 * 60;     // 08:00 -> 480
-  const SLOT_MIN = 5;               // 5 分钟一个格
-  const TOTAL_COLS = (22 - 8) * 60 / SLOT_MIN; // 14h * 60 / 5 = 168
 
   // —— Today’s Tasks：纯前端本地管理（不从后端拉取），只在 Generate 时一次性 POST —— //
   const [tasks, setTasks] = useState([]);   // 初始空
