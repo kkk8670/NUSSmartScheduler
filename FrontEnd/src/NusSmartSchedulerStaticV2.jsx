@@ -23,6 +23,19 @@ import "./scheduler.css";
 
 const API_BASE = "http://localhost:8000"; // ← 改成你的后端地址
 
+function hhmmToMinutes(hhmm) {
+  const [hh, mm] = hhmm.split(":").map(Number);
+  return hh * 60 + mm;
+}
+function hhmmToSlot(hhmm) {
+  return Math.max(0, Math.floor((hhmmToMinutes(hhmm) - DAY_START_MIN) / SLOT_MIN));
+}
+function spanSlots(startHHMM, endHHMM) {
+  const s = hhmmToSlot(startHHMM);
+  const e = hhmmToSlot(endHHMM);
+  return Math.max(1, e - s);
+}
+  
 export default function NUSSmartSchedulerStaticV2() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [sliders, setSliders] = useState({
@@ -54,7 +67,7 @@ export default function NUSSmartSchedulerStaticV2() {
     const cols = TOTAL_COLS; // 168
     const colWidth = Math.floor(width / cols);
     setColW(Math.max(4, colWidth)); // 列宽至少 4px，避免太细不可读
-  }, [showFull]);
+  }, [showFull, TOTAL_COLS]);
 
 
 
@@ -67,7 +80,7 @@ export default function NUSSmartSchedulerStaticV2() {
        const minPx = 140; // 最短事件至少 140px
        const suggested = Math.min(28, Math.max(8, Math.ceil(minPx / minSpan)));
        if (suggested > colW) setColW(suggested);
-     }, [timeline]);
+     }, [timeline, colW, spanSlots]);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -97,19 +110,6 @@ export default function NUSSmartSchedulerStaticV2() {
   const DAY_START_MIN = 8 * 60;     // 08:00 -> 480
   const SLOT_MIN = 5;               // 5 分钟一个格
   const TOTAL_COLS = (22 - 8) * 60 / SLOT_MIN; // 14h * 60 / 5 = 168
-
-  function hhmmToMinutes(hhmm) {
-    const [hh, mm] = hhmm.split(":").map(Number);
-    return hh * 60 + mm;
-  }
-  function hhmmToSlot(hhmm) {
-    return Math.max(0, Math.floor((hhmmToMinutes(hhmm) - DAY_START_MIN) / SLOT_MIN));
-  }
-  function spanSlots(startHHMM, endHHMM) {
-    const s = hhmmToSlot(startHHMM);
-    const e = hhmmToSlot(endHHMM);
-    return Math.max(1, e - s);
-  }
 
   // —— Today’s Tasks：纯前端本地管理（不从后端拉取），只在 Generate 时一次性 POST —— //
   const [tasks, setTasks] = useState([]);   // 初始空

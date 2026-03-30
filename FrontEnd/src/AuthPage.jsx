@@ -18,7 +18,11 @@ async function http(path, { method = "GET", body, token } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   let data = null;
-  try { data = await res.json(); } catch (_) {}
+  try { 
+      data = await res.json(); 
+    } catch (err) {
+      console.warn("Failed to parse JSON response:", err);
+    }
   if (!res.ok) {
     const msg = (data && (data.detail || data.message)) || `${res.status} ${res.statusText}`;
     throw new Error(msg);
