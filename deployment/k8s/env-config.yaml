@@ -1,0 +1,31 @@
+# Environment Parameter Configuration
+# Switch: Only modify ENV_MODE in the root .env file.
+# Extend: Add a new environment key under 'envs' or modify existing values here.
+# Parameter Descriptions:
+#   storageClassName : The K8s StorageClass for PersistentVolumeClaims.
+#                      k8s-local/Linux  -> local-path  (k3s default)
+#                      k8s-local/Mac,Win -> hostpath   (Docker Desktop default)
+#                      cloud            -> gp3         (AWS EBS; use 'standard-rwo' for GKE)
+#   ingressClassName : The Ingress Controller class.
+#                      k8s-local/Linux  -> traefik     (k3s built-in)
+#                      k8s-local/Mac,Win -> nginx      (requires manual install)
+#                      cloud            -> nginx        (or 'gce'/'alb')
+#   domain           : The host defined in Ingress rules.
+#                      k8s-local -> smart-scheduler.local
+#                      cloud     -> Replace with actual domain, e.g., scheduler.example.com
+#   imageRegistry    : Prefix for Docker images (used as push target in deploy.sh).
+#                      k8s-local -> ""  (Images imported locally or via Docker Desktop)
+#                      cloud     -> e.g., 123456789.dkr.ecr.ap-southeast-1.amazonaws.com
+#   note             : storageClassName for k8s-local is auto-detected by deploy.sh (OS-based).
+
+envs:
+  k8s-local:
+    storageClassName: "auto"
+    ingressClassName: "traefik"
+    domain: "smart-scheduler.local"
+    imageRegistry: ""
+  cloud-sample:
+    storageClassName: "gp3"
+    ingressClassName: "nginx"
+    domain: "scheduler.example.com"
+    imageRegistry: ""                    # Update before cloud deployment

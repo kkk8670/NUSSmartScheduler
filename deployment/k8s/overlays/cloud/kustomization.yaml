@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# source：env-config.yaml → envs.cloud
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: PersistentVolumeClaim
+      name: mysql-pvc
+    patch: |-
+      - op: replace
+        path: /spec/storageClassName
+        value: gp3
+
+  - target:
+      kind: PersistentVolumeClaim
+      name: weaviate-pvc
+    patch: |-
+      - op: replace
+        path: /spec/storageClassName
+        value: gp3
+
+  - target:
+      kind: Ingress
+      name: smart-scheduler-ingress
+    patch: |-
+      - op: replace
+        path: /spec/ingressClassName
+        value: nginx
+      - op: replace
+        path: /spec/rules/0/host
+        value: scheduler.example.com     

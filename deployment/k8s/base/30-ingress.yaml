@@ -4,9 +4,9 @@ metadata:
   name: smart-scheduler-ingress
   namespace: smart-scheduler
 spec:
-  ingressClassName: traefik              # k3s auto with Traefik
+  ingressClassName: placeholder          # overridden by overlay patch
   rules:
-    - host: smart-scheduler.local
+    - host: placeholder.local            # overridden by overlay patch
       http:
         paths:
           - path: /api

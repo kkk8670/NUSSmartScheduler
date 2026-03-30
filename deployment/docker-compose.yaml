@@ -1,13 +1,13 @@
 # docker-compose.yaml – basic setting
 #   pre run: ln -s ../.env .env
 # 
-#   dev (only DB):   docker compose up db
-#   dev (DB + be):   docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up
-#   prod (fe + be + DB):   docker compose up --build
+#   infra (only DB):   make infra
+#   dev (DB + be):   make dev
+#   prod (fe + be + DB):   make prod
 
 services:
 
-  frontend:
+  frontend-svc:
     build:
       context: ../FrontEnd
       args:
@@ -17,9 +17,9 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      - backend-svc
 
-  backend:
+  backend-svc:
     build:
       context: ../BackEnd
     image: smart_scheduler_backend:latest

@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - 00-namespace.yaml
+  - 01-configmap.yaml
+  - 10-mysql-pvc.yaml
+  - 11-mysql-deploy.yaml
+  - 12-weaviate-pvc.yaml
+  - 13-weaviate-deploy.yaml
+  - 20-backend-deploy.yaml
+  - 21-frontend-deploy.yaml
+  - 30-ingress.yaml
+  - 31-network-policy.yaml
