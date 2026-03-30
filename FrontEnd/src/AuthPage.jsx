@@ -86,7 +86,7 @@ export default function AuthPage() {
         body: form.toString(),
       });
 
-      let data = {}; try { data = await res.json(); } catch {}
+      let data = {}; try { data = await res.json(); } catch (e) { console.error(e); }
       if (!res.ok) {
         const msg = data?.detail || data?.message || `${res.status}`;
         if (res.status === 401) throw new Error("Invalid credentials");

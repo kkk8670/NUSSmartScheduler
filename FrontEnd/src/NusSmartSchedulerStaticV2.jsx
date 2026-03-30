@@ -72,7 +72,7 @@ export default function NUSSmartSchedulerStaticV2() {
     const cols = TOTAL_COLS; // 168
     const colWidth = Math.floor(width / cols);
     setColW(Math.max(4, colWidth)); // 列宽至少 4px，避免太细不可读
-  }, [showFull, TOTAL_COLS]);
+  }, [showFull]);
 
 
 
