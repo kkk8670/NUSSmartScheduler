@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import "./scheduler.css";
 
-const API_BASE = "http://localhost:8000"; // ← 改成你的后端地址
+const API_BASE = import.meta.env.VITE_BACKEND_URL ?? "";
 
 const DAY_START_MIN = 8 * 60;     // 08:00 -> 480
 const SLOT_MIN = 5;               // 5 分钟一个格

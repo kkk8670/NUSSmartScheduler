@@ -221,3 +221,57 @@ Secret 由 `deploy.sh` 从 `.env` 动态生成，不存在静态 yaml 文件。
 
 GitHub repo Settings → Secrets → Actions 中配置：OPENAI_API_KEY
 GitHub repo Settings（上云时） → Variables → Actions 中配置：REGISTRY_URL, REGISTRY_USER 
+
+## 7. 本地测试（后端）
+```
+BackEnd/
+├── tests/
+│   ├── conftest.py
+│   ├── test_scheduler.py
+│   ├── test_auth.py
+│   ├── test_api.py
+│   └── test_parser.py
+├── requirements.txt
+└── main.py
+```
+
+安装测试依赖`pip install pytest pytest-asyncio httpx`
+
+本地测试方法
+```
+# 只跑某一个文件
+pytest tests/test_parser.py
+
+# 只跑某一个 class
+pytest tests/test_scheduler.py::TestTimeUtils
+
+# 只跑某一个函数
+pytest tests/test_scheduler.py::TestTimeUtils::test_roundtrip
+
+# 跑失败时立刻停下来，不继续跑后面的
+pytest tests/ -x
+
+# 显示每个测试的名字和结果（默认只显示点）
+pytest tests/ -v
+
+# 显示 print() 的输出（默认被 pytest 吞掉）
+pytest tests/ -s
+```
+
+建议步骤：
+```
+# 1：零依赖 
+pytest tests/test_parser.py -v
+
+# 2：纯函数，但依赖 constants 配置
+pytest tests/test_auth.py -v
+
+# 3：不依赖 DB 和 LLM，只用 MagicMock
+pytest tests/test_react_trace.py -v 
+
+# 4：依赖 networkx 和 ortools
+pytest tests/test_scheduler.py -v
+
+# 5：依赖 TestClient 和 mock， 
+pytest tests/test_api.py -v
+```

@@ -10,6 +10,9 @@ on:
     paths: [BackEnd/**]
 
 jobs:
+  # ══════════════════════════════════════
+  # Job 1: unit test + API test
+  # ══════════════════════════════════════
   test:
     runs-on: ubuntu-latest
     defaults:
@@ -30,8 +33,44 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --tb=short
         env:
-          OPENAI_API_KEY: "sk-test-placeholder"
-          DB_URL: "sqlite:///./test.db"
+          # read from GitHub Secrets  
+          OPENAI_API_KEY:  ${{ secrets.OPENAI_API_KEY }}
+          JWT_SECRET_KEY:  ${{ secrets.JWT_SECRET_KEY }}
+          DATABASE_URL:    ${{ secrets.DATABASE_URL }}
+          WEAVIATE_URL:    ${{ secrets.WEAVIATE_URL }}
+          # not sensitive
+          JWT_ALGORITHM:        HS256
+          JWT_EXPIRE_MINUTES:   60
+          AGENT_MODEL:          gpt-4o-mini
+          AGENT_TEMPERATURE:    "0"
+
+  # ══════════════════════════════════════
+  # Job 2: Dependent Security Scanning
+  # ══════════════════════════════════════
+  # Scan the dependencies in requirements.txt for known vulnerabilities.
+  
+  pip-audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BackEnd
+ 
+    steps:
+      - uses: actions/checkout@v4
+ 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+ 
+      - name: Run pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
+  # ══════════════════════════════════════
+  # Job 3: Build Docker Image + Trivy Scan
+  # ══════════════════════════════════════
+  # Test pass → Build image → Trivy scan system dependency vulnerabilities in the image
 
   build-image:
     needs: test
@@ -40,3 +79,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build backend image
         run: docker build -t smart_scheduler_backend:${{ github.sha }} ./BackEnd
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: smart_scheduler_backend:${{ github.sha }}
+          format: table
+          exit-code: "1"           # Fail the job when a vulnerability is found
+          severity: CRITICAL,HIGH  # Focus only on high-risk and critical vulnerabilities
+
+      - name: Upload Trivy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-report.txt

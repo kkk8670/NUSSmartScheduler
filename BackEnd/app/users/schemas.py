@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 # —— 输入输出模型（Pydantic）
 
@@ -18,9 +18,8 @@ class UserUpdate(BaseModel):
 
 class UserOut(UserBase):
     id: int
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
 
 # —— 认证相关
 class Token(BaseModel):

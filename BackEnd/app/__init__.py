@@ -70,15 +70,18 @@ def create_app() -> FastAPI:
     )
 
     # 路由注册
-    app.include_router(locations.router, prefix="/api", tags=["locations"])
-    app.include_router(schedule.router,  prefix="/api", tags=["schedule"])
-    app.include_router(planner.router,   prefix="/api", tags=["planner"])
-    app.include_router(oauth.router,                 tags=["auth"])
-    app.include_router(cal_router.router,            tags=["calendar"])
-    app.include_router(agent_router.router, prefix="/agent", tags=["agent"])
-    app.include_router(multi_router, prefix="/api")
-    app.include_router(react_router, prefix="/api")
-    app.include_router(auth_router,  prefix="/auth", tags=["auth"])
+    app.include_router(locations.router, prefix="/api/locations", tags=["locations"])
+    app.include_router(schedule.router, prefix="/api/schedule", tags=["schedule"])
+    app.include_router(planner.router, prefix="/api/planner", tags=["planner"])
+
+    app.include_router(auth_router, prefix="/auth", tags=["auth"])
+    app.include_router(oauth.router, prefix="/auth/oauth", tags=["auth"])
+ 
+    app.include_router(cal_router.router, prefix="/api/calendar", tags=["calendar"])
+    app.include_router(agent_router.router, prefix="/api/agent", tags=["agent"])
+    app.include_router(multi_router, prefix="/api/multi")
+    app.include_router(react_router, prefix="/api/react")
+ 
     return app
 
 __all__ = ["create_app"]
