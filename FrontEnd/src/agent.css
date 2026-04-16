@@ -19,7 +19,7 @@ body{ margin:10px; background:var(--am2-bg); color:var(--am2-ink-800);
 .am2-root{ min-height:100vh; display:flex; flex-direction:column;  justifyContent: center;
 }
 .am2-header{ position:sticky; top:0; z-index:10; background:rgba(255,255,255,.9); backdrop-filter: blur(8px); border-bottom:1px solid var(--am2-border); }
-.am2-header__inner{ min-width: 1420px; margin: 0 auto; padding: 12px 16px; display:flex; align-items:center; justify-content:space-between; }
+.am2-header__inner{ min-width: 1420px; width: 100%; margin: 0 auto; padding: 12px 16px; display:flex; align-items:center; justify-content:space-between; }
 .am2-brand{ display:flex; align-items:center; gap:12px; }
 .am2-brand__icon{ background: var(--am2-ink-900); color:#fff; border-radius:12px; padding:8px; }
 .am2-brand__title{ margin:0; font-weight:600; color:var(--am2-ink-900); font-size:16px; }
