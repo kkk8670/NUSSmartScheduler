@@ -29,7 +29,7 @@ services:
     env_file:
       - ../.env
     environment:
-      DB_URL: ${DB_URL}
+      DB_URL: mysql+pymysql://root:${MYSQL_PASSWORD}@${DB_HOST}:3306/${MYSQL_DATABASE}
       WEAVIATE_HOST: weaviate
       WEAVIATE_HTTP_PORT: ${WEAVIATE_HTTP_PORT:-8080}
       WEAVIATE_GRPC_PORT: ${WEAVIATE_GRPC_PORT:-50051}
