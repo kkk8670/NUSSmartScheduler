@@ -275,3 +275,19 @@ pytest tests/test_scheduler.py -v
 # 5：依赖 TestClient 和 mock， 
 pytest tests/test_api.py -v
 ```
+
+## 8. langfuse
+
+- 第一步要注册langfuse，拿到api key。（在`.env`中填入）
+
+- 其次需要测试一下运行，直接后台`http://localhost:8000/docs`运行。测试账户：
+```
+{
+  "username": "user@example.com",
+  "password": "string"
+}
+# id: 3
+```
+Swagger 页面最上方，点击绿色的小锁 Authorize 按钮，填入`username`和`password`登录。
+
+- 然后在`/chat`处填入prompt运行。

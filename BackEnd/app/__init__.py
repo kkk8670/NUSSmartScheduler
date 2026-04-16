@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import settings
+from .core.tracing import get_langfuse, flush as lf_flush # add
 from .routers import locations, schedule, planner, oauth, calendar as cal_router
 from .routers.auth_router import router as auth_router
 from .agent import router as agent_router
@@ -20,6 +21,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ---- startup ----
+
+    # Langfuse：触发懒加载初始化，确认连通性
+    get_langfuse()    
+
     # WEAVIATE_HOST Preferred environment variable for Docker / K8s / Cloud configuration;
     # Default localhost for local development without setting this variable.
     wv_host = settings.WEAVIATE_HOST
@@ -53,6 +58,10 @@ async def lifespan(app: FastAPI):
     yield  # ---- running ----
 
     # ---- shutdown ----
+    
+    # Langfuse：上报所有缓冲中的 trace
+    lf_flush()    
+
     if getattr(app.state, "weaviate_client", None):
         app.state.weaviate_client.close()
         app.state.weaviate_client = None

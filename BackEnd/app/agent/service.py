@@ -5,6 +5,8 @@ from pydantic import BaseModel
 from app.agent.graph import build_graph
 from app.agent.graph_compare import build_graph as build_compare_graph
 from app.schemas.tasks import TaskIn
+from app.core.tracing import make_lc_handler  
+
 
 class PlanReq(BaseModel):
     tasks: List[TaskIn]
@@ -39,7 +41,10 @@ class AgentService:
             "commute_mode": req.commute_mode,
             "mode": req.mode,
         }
-        out = self._graph.invoke(state)
+        out = self._graph.invoke(
+            state,
+            config={"callbacks": lf_handlers} if lf_handlers else {},   # ← 改动点
+        )
         return PlanRes(
             items=out.get("items", []),
             trace={
@@ -56,7 +61,10 @@ class AgentService:
             "mode_b": req.baseline_b,
             "messages": [],
         }
-        out = self._compare_graph.invoke(state)
+        out = self._compare_graph.invoke(
+            state,
+            config={"callbacks": lf_handlers} if lf_handlers else {},   # ← 改动点
+        )
         plans = [
             {
                 "id": "baseline_travel",

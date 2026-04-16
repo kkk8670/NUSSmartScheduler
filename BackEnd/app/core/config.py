@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     WEAVIATE_HOST: str = Field("localhost", env="WEAVIATE_HOST")
     WEAVIATE_HTTP_PORT: int = Field(8080, env="WEAVIATE_HTTP_PORT")
     WEAVIATE_GRPC_PORT: int = Field(50051, env="WEAVIATE_GRPC_PORT")
+    # === Langfuse 配置 ===
+    LANGFUSE_PUBLIC_KEY: str | None = Field(None, validation_alias="LANGFUSE_PUBLIC_KEY")
+    LANGFUSE_SECRET_KEY: str | None = Field(None, validation_alias="LANGFUSE_SECRET_KEY")
+    LANGFUSE_HOST: str = Field("https://us.cloud.langfuse.com", validation_alias="LANGFUSE_BASE_URL")
     # pydantic v2 配置方式
     model_config = SettingsConfigDict(
         env_file=".env",

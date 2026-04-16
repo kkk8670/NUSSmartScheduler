@@ -15,6 +15,7 @@ from app.multi_agents.tools.react_trace import ReactTraceHandler
 
 from app.agent import prompts
 from app.core.config import settings
+from app.core.tracing import make_lc_handler # adding langfuse
 from app.multi_agents.verification_agent import verification_agent_tool
 from app.tool_lc import (
     memory_search_tool,
@@ -36,39 +37,12 @@ def build_react_prompt() -> ChatPromptTemplate:
     ])
 
 
-# def run_react_agent(user_prompt: str):
-#     tools = [memory_search_tool, knowledge_search_tool, schedule_suggest_tool]
-#
-#     llm = ChatOpenAI(
-#         model=getattr(settings, "AGENT_MODEL", "gpt-4o-mini-2024-07-18"),
-#         temperature=0,
-#         api_key=settings.OPENAI_API_KEY,
-#     )
-#
-#     prompt = build_react_prompt()  # ← 不要手动渲染 tools，交给 LC
-#
-#     agent = create_react_agent(llm, tools, prompt)
-#     executor = AgentExecutor(
-#         agent=agent,
-#         tools=tools,
-#         verbose=True,
-#         handle_parsing_errors=True,
-#         max_iterations=4,
-#     )
-#
-#     result = executor.invoke({"input": user_prompt})
-#     # result["output"] 多半是字符串，这里按你需要做 JSON 解析/兜底
-#     out_str = (result.get("output") or "").strip()
-#     try:
-#         import json
-#         return json.loads(out_str)
-#     except Exception:
-#         return {"reply": out_str, "plan": [], "schedule": None, "evidence": [], "notes": ["[fallback] non-json output"]}
-
-
-
-
-def run_react_agent(user_prompt: str) -> Tuple[List[dict], Dict[str, Any]]:
+def run_react_agent(
+    user_prompt: str,
+    *,
+    user_id: Optional[str] = None,       # add
+    session_id: Optional[str] = None,    # add
+) -> Tuple[List[dict], Dict[str, Any]]:
     tools = [
         dialogue_agent_tool,
         memory_agent_tool,
@@ -85,9 +59,19 @@ def run_react_agent(user_prompt: str) -> Tuple[List[dict], Dict[str, Any]]:
     )
 
     prompt = build_react_prompt()  # 交给 LC 绑定工具，不手工渲染
-
     agent = create_react_agent(llm, tools, prompt)
+    
+    # ── callbacks：ReactTraceHandler（前端 steps）+ Langfuse（可观测性）──
     tracer = ReactTraceHandler()
+    lf_handlers = make_lc_handler(
+        trace_name="react-agent",
+        user_id=user_id,
+        session_id=session_id,
+        metadata={"agent_model": settings.AGENT_MODEL},
+    )
+    # lf_handlers 在 Langfuse 未配置时为 []，不影响 tracer
+    all_callbacks = [tracer] + lf_handlers   
+
     executor = AgentExecutor(
         agent=agent,
         tools=tools,
@@ -95,7 +79,7 @@ def run_react_agent(user_prompt: str) -> Tuple[List[dict], Dict[str, Any]]:
         handle_parsing_errors=True,
         max_iterations=12,
         return_intermediate_steps=True,
-        callbacks=[tracer],            # 关键：挂上回调
+        callbacks=all_callbacks, 
     )
 
     result = executor.invoke({"input": user_prompt})
