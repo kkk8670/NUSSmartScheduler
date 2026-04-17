@@ -6,7 +6,7 @@ from ..db.session import get_engine
 router = APIRouter()
 
 
-@router.get("/locations")
+@router.get("/")
 def get_locations():
     eng = get_engine()
     sql = text(

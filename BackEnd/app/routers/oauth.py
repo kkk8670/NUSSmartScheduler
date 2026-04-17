@@ -23,7 +23,7 @@ def build_flow(state: str | None = None):
 
 
 
-@router.get("/auth/start")
+@router.get("/start")
 def auth_start(_: Request):
     state = secrets.token_urlsafe(16)
     flow = build_flow(state=state)
@@ -38,7 +38,7 @@ def auth_start(_: Request):
 
 
 
-@router.get("/oauth2callback")
+@router.get("/callback")
 def oauth2callback(request: Request):
     state = request.query_params.get("state")
     if not state or state not in SESSION_STORE:

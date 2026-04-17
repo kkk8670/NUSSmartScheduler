@@ -4,7 +4,7 @@ from fastapi import APIRouter
 router = APIRouter()
 
 
-@router.get("/schedule")
+@router.get("/")
 def get_schedule():
     return {
         "plans": [

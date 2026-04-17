@@ -126,7 +126,7 @@ export default function NUSSmartSchedulerStaticV2() {
     fixed: false,
   });
 
-  const [locations, setLocations] = useState([]);
+  const [locations, setLocations] = useState(["LT27", "COM1", "COM2", "UTSRC", "Other"]);
 
   useEffect(() => {
     (async () => {
@@ -204,7 +204,7 @@ export default function NUSSmartSchedulerStaticV2() {
         fixed: !!t.fixed,
       }));
 
-      const res = await fetch(`${API_BASE}/api/generate`, {
+      const res = await fetch(`${API_BASE}/api/planner/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tasks: tasksPayload, commuteMode }),

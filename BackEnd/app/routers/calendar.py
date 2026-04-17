@@ -6,7 +6,7 @@ from ..services.calendar_service import insert_event
 router = APIRouter()
 
 
-@router.post("/calendar/add")
+@router.post("/add")
 def add_event(event: EventData):
     try:
         event_id = insert_event(
