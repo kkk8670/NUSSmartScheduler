@@ -1,3 +1,20 @@
+# deployment/k8s/base/20-backend-deploy.yaml
+#
+# ── 改动说明 ──────────────────────────────────────────────────────────────
+# 在 Pod template metadata 里新增 prometheus.io/* annotations。
+#
+# 为什么要加这几行 annotations？
+#   Prometheus Operator（通过 kube-prometheus-stack 安装）使用两种发现方式：
+#     1. ServiceMonitor CRD（精确，推荐）→ 我们在 monitoring/ 目录里单独定义
+#     2. Pod annotations（兼容旧版，无需 CRD）
+#   这里同时加上 annotations 是双保险：即使 ServiceMonitor 未就绪，
+#   Prometheus 的 pod-level scrape 也能发现 /metrics。
+#   annotations 不影响运行时任何行为，只是元数据。
+#
+# prometheus.io/scrape: "true"   → 告诉 Prometheus 这个 Pod 需要被采集
+# prometheus.io/port:   "8000"   → 采集端口（和 containerPort 一致）
+# prometheus.io/path:   "/metrics" → 端点路径（instrumentator 默认值）
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,6 +29,10 @@ spec:
     metadata:
       labels:
         app: backend
+      annotations:                             # ← 新增
+        prometheus.io/scrape: "true"           # ← 新增
+        prometheus.io/port:   "8000"           # ← 新增
+        prometheus.io/path:   "/metrics"       # ← 新增
     spec:
       containers:
         - name: backend
@@ -21,7 +42,7 @@ spec:
             - containerPort: 8000
           envFrom:
             - configMapRef:
-                name: app-config   # include WEAVIATE_HOST / _HTTP_PORT / _GRPC_PORT
+                name: app-config
           env:
             - name: DB_URL
               valueFrom:
@@ -46,9 +67,12 @@ kind: Service
 metadata:
   name: backend-svc
   namespace: smart-scheduler
+  labels:              
+    app: backend
 spec:
   selector:
     app: backend
   ports:
-    - port: 8000
+    - name: http-metrics
+      port: 8000
       targetPort: 8000

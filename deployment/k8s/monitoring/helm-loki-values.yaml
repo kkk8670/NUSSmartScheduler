@@ -1,0 +1,66 @@
+# deployment/k8s/monitoring/helm-loki-values.yaml
+#
+# ── 这个文件的作用 ────────────────────────────────────────────────────────
+# loki-stack chart 包含 Loki（日志存储）+ Promtail（日志采集 DaemonSet）。
+# 默认配置已经接近开箱即用，这里只做必要的裁剪：
+#
+# loki.persistence：
+#   本地环境开启持久化，防止 Loki Pod 重启后日志数据丢失。
+#   storageClassName 同样通过 deploy.sh --set 动态覆盖。
+#
+# promtail：
+#   Promtail 以 DaemonSet 运行在每个节点，自动挂载
+#   /var/log/containers/ 采集所有容器的 stdout/stderr。
+#   你的 backend 里的 jlog()（JSON 格式输出到 stdout）会被 Promtail
+#   自动采集，并在 Grafana Loki datasource 里可以用 LogQL 查询：
+#     {namespace="smart-scheduler", app="backend"} | json | event="agent_exit"
+#
+# ── Promtail 不需要你改任何应用代码 ─────────────────────────────────────
+# 它通过 hostPath 挂载节点的 /var/log/containers/，
+# K8s 会把每个容器的 stdout 写到这个路径，Promtail 尾随读取并推送到 Loki。
+# 你的 jlog() 输出的 JSON 结构会被 Loki 自动解析为结构化日志字段。
+
+loki:
+  enabled: true
+  image:
+    tag: 2.9.3  
+  persistence:
+    enabled: true
+    storageClassName: local-path   # deploy.sh 会用 --set 覆盖
+    size: 5Gi
+  config:
+    limits_config:
+      retention_period: 168h       # 日志保留 7 天（与 Prometheus 一致）
+      ingestion_rate_mb: 4
+      ingestion_burst_size_mb: 8
+
+promtail:
+  enabled: true
+  config:
+    # 只采集 smart-scheduler namespace 的日志，减少噪音
+    snippets:
+      extraScrapeConfigs: |
+        - job_name: smart-scheduler
+          kubernetes_sd_configs:
+            - role: pod
+              namespaces:
+                names:
+                  - smart-scheduler
+          pipeline_stages:
+            - json:               # 解析 jlog() 输出的 JSON 结构
+                expressions:
+                  event: event
+                  agent: agent
+                  took_ms: took_ms
+            - labels:
+                event:
+                agent:
+
+grafana:
+  enabled: false      # Grafana 已在 kube-prometheus-stack 里安装，这里禁用避免重复
+  sidecar:
+    datasources:
+      enabled: false  # 禁止 loki-stack 注入自己的 datasource ConfigMap
+                                  # 否则它会生成 loki-loki-stack ConfigMap，把 Loki 设为 isDefault: true
+                                  # 与 kube-prometheus-stack 的 Prometheus default datasource 冲突
+                                  # 导致 Grafana 启动失败（Only one datasource can be marked as default）

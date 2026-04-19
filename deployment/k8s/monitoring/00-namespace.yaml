@@ -1,0 +1,16 @@
+# deployment/k8s/monitoring/00-namespace.yaml
+#
+# Prometheus / Grafana / Loki / Promtail 是基础设施层，
+# smart-scheduler 是应用层，两层应该物理隔离：
+#   - 独立生命周期：监控栈可以独立升级/重启，不影响应用
+#   - 独立 RBAC：Prometheus 需要 ClusterRole 读取所有 namespace
+#     的 pod/service，但这个权限不应该挂在应用 namespace 下
+#   - 独立 NetworkPolicy：应用的 default-deny 不会误杀 Prometheus scrape
+ 
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/part-of: smart-scheduler-observability

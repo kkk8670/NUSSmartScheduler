@@ -9,7 +9,6 @@ from .routers import locations, schedule, planner, oauth, calendar as cal_router
 from .routers.auth_router import router as auth_router
 from .agent import router as agent_router
 from .routers.multiagents_router import router as multi_router
-from .routers.react_router import router as react_router
 # Weaviate / VectorStore
 import weaviate
 from langchain_openai import OpenAIEmbeddings
@@ -89,7 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(cal_router.router, prefix="/api/calendar", tags=["calendar"])
     app.include_router(agent_router.router, prefix="/api/agent", tags=["agent"])
     app.include_router(multi_router, prefix="/api/multi")
-    app.include_router(react_router, prefix="/api/react")
+ 
  
     return app
 

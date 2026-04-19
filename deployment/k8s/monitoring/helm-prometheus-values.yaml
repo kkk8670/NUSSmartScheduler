@@ -1,0 +1,77 @@
+# deployment/k8s/monitoring/helm-prometheus-values.yaml
+#
+# ── 这个文件的作用 ───────────────────────
+# kube-prometheus-stack 是一个超大的 Helm chart，默认开启很多企业级功能
+#（多副本 Prometheus、完整 AlertManager 集群、大量 Node Exporter 规则等）。
+# 对于学校项目的单机 K8s，需要裁剪到合理大小，否则：
+#   - Prometheus 默认保留 10Gi 数据，单机 PVC 会很快耗尽
+#   - AlertManager 高可用模式需要 3 个副本，资源浪费
+#   - 默认开启的 etcd / kube-scheduler 监控在本地 k3s 环境会报错
+#
+# ── 关键配置说明 ───────────────
+# grafana.adminPassword：
+#   生产环境应改成 Secret 注入，这里为方便本地演示写明文。
+#   cloud 环境部署时从 .env 读取后用 --set 覆盖。
+#
+# prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues: false
+#   默认值 true 表示 Prometheus 只发现同 Helm release 的 ServiceMonitor。
+#   改为 false 让 Prometheus 发现集群内所有 ServiceMonitor（包括我们自己的）。
+#
+# prometheus.prometheusSpec.retention: 7d
+#   单机环境数据只保留 7 天，够用且不会撑爆磁盘。
+#
+# storageSpec：
+#   给 Prometheus 的 TSDB 数据分配独立 PVC。
+#   storageClassName 在 deploy.sh 里通过 --set 动态覆盖（和应用 PVC 同逻辑）。
+
+grafana:
+  enabled: true
+  adminPassword: "smart-scheduler-admin"   # 本地演示用；生产通过 --set 覆盖
+  persistence:
+    enabled: false                          # 本地不持久化 Grafana dashboard（用 ConfigMap 导入代替）
+  service:
+    type: ClusterIP                         # 通过 port-forward 访问，不对外暴露
+  additionalDataSources:          # ← 新增这一块
+    - name: Loki
+      type: loki
+      url: http://loki:3100
+      access: proxy
+      isDefault: false            # Prometheus 是 default，Loki 不是
+      jsonData:
+        maxLines: 1000
+        
+alertmanager:
+  enabled: false                            # 学校项目不需要告警管理器
+
+prometheus:
+  prometheusSpec:
+    # 让 Prometheus 发现所有 namespace 的 ServiceMonitor，不限于 Helm release
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+
+    retention: 7d                           # TSDB 数据保留 7 天
+    retentionSize: "4GB"                    # 磁盘上限 4GB
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path      # deploy.sh 会用 --set 覆盖为正确的 storageClass
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+# 关闭在本地 k3s 环境容易报错的组件监控
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+# Node Exporter：采集节点 CPU / 内存 / 磁盘，保留（有实际价值）
+nodeExporter:
+  enabled: true

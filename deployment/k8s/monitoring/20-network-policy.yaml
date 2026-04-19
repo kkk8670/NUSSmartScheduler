@@ -1,0 +1,41 @@
+# deployment/k8s/monitoring/20-network-policy.yaml
+#
+# base/31-network-policy.yaml 里设置了 smart-scheduler namespace 的
+# default-deny-ingress，所有未被显式允许的 ingress 流量都会被 drop。
+# Prometheus 在 monitoring namespace，需要 scrape backend:8000/metrics，
+# 这条流量会被 default-deny 挡住，必须显式开放。
+#
+# ── 为什么不直接修改 base/31-network-policy.yaml？────────── 
+# base/ 目录是应用层的 manifests，不应该感知监控基础设施的存在。
+# 把监控相关的 NetworkPolicy 放在 monitoring/ 目录，职责清晰：
+#   - base/31：应用内部的安全规则（backend→mysql, backend→weaviate 等）
+#   - monitoring/20：监控栈与应用之间的通道
+# 这样删掉 monitoring/ 整个目录就能完全卸载监控，应用的安全策略不受影响。
+#
+# ── namespaceSelector 的工作原理 ─────────────── 
+# from.namespaceSelector 匹配 namespace 的 label，这里匹配
+# kubernetes.io/metadata.name: monitoring（K8s 1.21+ 自动给每个 namespace 加这个 label）
+# from.podSelector 匹配 monitoring namespace 里 label 为
+# app.kubernetes.io/name: prometheus 的 Pod（kube-prometheus-stack 默认 label）
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape-backend
+  namespace: smart-scheduler    # 这条规则作用在应用 namespace
+spec:
+  podSelector:
+    matchLabels:
+      app: backend              # 只开放 backend pod 的入口
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring   # 来自 monitoring namespace
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus        # 来自 Prometheus pod
+      ports:
+        - port: 8000            # 只开放 /metrics 所在的端口
+  policyTypes:
+    - Ingress

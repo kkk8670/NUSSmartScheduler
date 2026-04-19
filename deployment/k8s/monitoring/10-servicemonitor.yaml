@@ -1,0 +1,34 @@
+# deployment/k8s/monitoring/10-servicemonitor.yaml
+#
+# ─────────── 什么是 ServiceMonitor？────────────── 
+# ServiceMonitor 是 Prometheus Operator 提供的 CRD（Custom Resource Definition）。
+# 它描述"Prometheus 应该去哪里、多久、怎么采集指标"，是声明式的 scrape 配置。
+# kube-prometheus-stack 安装后会自动安装这个 CRD。
+#
+# ────── 为什么用 ServiceMonitor 而不只依赖 Pod annotations？────────
+# Pod annotations 是老式的 scrape 发现机制，ServiceMonitor 是 Operator 模式的标准做法，功能更强：
+#   - 可以指定 scrape interval、timeout、TLS、relabeling 等
+#   - Prometheus Operator 会自动把 ServiceMonitor 转成 scrape_config
+#   - 在 Grafana 里的 Explore 界面，基于 ServiceMonitor 的指标 label 更干净
+
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend-monitor
+  namespace: monitoring         
+  labels:
+    release: kube-prom           # 必须与 helm install 时的 release name 一致
+                                 # Prometheus Operator 用这个 label 发现 ServiceMonitor
+spec:
+  namespaceSelector:
+    matchNames:
+      - smart-scheduler          # 去 smart-scheduler namespace 里找 Service
+  selector:
+    matchLabels:
+      app: backend               # 匹配 backend-svc（Service 上有 app: backend label）
+  endpoints:
+    - port: http-metrics         # 对应 Service 的 port name 或 number
+      path: /metrics
+      interval: 30s              # 每 30 秒采集一次，根据项目大小而定
+      scrapeTimeout: 10s
