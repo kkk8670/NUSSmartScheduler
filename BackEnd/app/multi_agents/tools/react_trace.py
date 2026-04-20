@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from langchain.callbacks.base import BaseCallbackHandler
+from langchain_core.callbacks.base import BaseCallbackHandler
 
 import json
 
