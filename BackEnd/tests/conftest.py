@@ -4,9 +4,16 @@
 conftest.py — global pytest fixtures
 public share：TestClient、JWT token、mock DB session
 """
+
+# conftest.py 顶部，最先执行
+from dotenv import load_dotenv
+load_dotenv(override=False)   # ← 先从 .env 加载真实 key
+
+
 import os
 import sys
 from unittest.mock import MagicMock
+ 
 
 # 1. 注入环境变量
 os.environ.setdefault("OPENAI_API_KEY",        "sk-test-fake")
@@ -40,8 +47,7 @@ import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
-from dotenv import load_dotenv
-load_dotenv(override=False) 
+
 
  
 

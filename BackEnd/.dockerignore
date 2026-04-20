@@ -1,9 +1,18 @@
-__pycache__
+# 忽略 Python  
+**/.venv/
+**/venv/
+**/ENV/
+**/.pytest_cache/
+**/.ds_store/
+**/__pycache__/
 *.pyc
-.env
-.git
-.venv
-venv
-*.egg-info
-.pytest_cache
-.mypy_cache
+
+# 忽略前端 
+**/node_modules/
+**/dist/
+
+# 忽略版本控制和日志
+.git/
+.gitignore
+*.log
+ 

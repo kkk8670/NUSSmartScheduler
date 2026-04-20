@@ -7,30 +7,18 @@ DEV_COMPOSE_FILE := docker-compose.dev.yaml
 MONITORING_DIR   := deployment/k8s/monitoring
 
 # ── 自动探测 kubectl 命令（k3s Linux vs Docker Desktop）──────────────────
-# 和 deploy.sh 保持相同的探测逻辑
 ifeq ($(shell uname -s), Linux)
-  KUBECTL        := sudo k3s kubectl
-  STORAGE_CLASS  := local-path
+  KUBECTL               := sudo k3s kubectl
+  STORAGE_CLASS         := local-path
+  NODE_EXPORTER_ENABLED := true    # ← 新增：Linux(k3s) 支持 node-exporter
 else
-  KUBECTL        := kubectl
-  STORAGE_CLASS  := hostpath
+  KUBECTL               := kubectl
+  STORAGE_CLASS         := hostpath
+  NODE_EXPORTER_ENABLED := false   # ← 新增：Mac/Win Docker Desktop 不支持
 endif
 
-.PHONY: help init infra dev prod down clean status monitoring grafana monitoring-down
+.PHONY: help init-env infra dev prod down clean status monitoring grafana monitoring-down
 
-# 新增三个 monitoring 相关 target：
-#   make monitoring  → 单独部署/更新监控栈（不重新部署应用）
-#   make grafana     → port-forward Grafana 到本地 3000 端口
-#   make monitoring-down → 卸载监控栈（保留应用）
-# 
-# 为什么单独提供 make monitoring，而不只依赖 deploy.sh？
-#   deploy.sh 每次都重新 build 镜像、import 到 k3s、等待 rollout——
-#   只想更新 Helm values 时（比如调整 retention 期限）跑完整 deploy.sh 太慢。
-#   make monitoring 只跑 helm upgrade，秒级完成。
-#
-# 为什么单独提供 make grafana？
-#   port-forward 是临时命令，需要保持终端窗口打开，经常需要单独执行。
-#   封装成 target 避免记忆长命令。
 help:
 	@echo "Smart Scheduler Management Commands:"
 	@echo ""
@@ -52,7 +40,7 @@ init-env:
 	@echo "Checking environment configuration..."
 	@cd $(COMPOSE_DIR) && [ -L .env ] || ln -s ../.env .env
 
-# ── Application targets (原有，不变）────────────────────────────────────────
+# ── Application targets ──────────────────────────────────────────────────────
 
 infra: init-env
 	cd $(COMPOSE_DIR) && docker compose up db weaviate -d
@@ -75,42 +63,48 @@ clean:
 status:
 	cd $(COMPOSE_DIR) && docker compose ps
 
-# ── Monitoring targets（新增）────────────────────────────────────────────────
+# ── Monitoring targets ───────────────────────────────────────────────────────
 
-# 单独部署/更新监控栈，不重新 build 应用镜像
-# 前提：应用已通过 deploy.sh 部署到 K8s
 monitoring:
 	@echo ">>> Deploying monitoring stack to K8s..."
 	$(KUBECTL) apply -f $(MONITORING_DIR)/00-namespace.yaml
-	$(KUBECTL) apply -f $(MONITORING_DIR)/10-servicemonitor.yaml
 	$(KUBECTL) apply -f $(MONITORING_DIR)/20-network-policy.yaml
 	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
 	helm repo add grafana              https://grafana.github.io/helm-charts             2>/dev/null || true
 	helm repo update
+	# ── 清理上次失败的 release（状态不是 deployed 时先 uninstall）──
+	@helm status kube-prom -n monitoring --output json 2>/dev/null | \
+	  python3 -c "import sys,json; s=json.load(sys.stdin)['info']['status']; exit(0) if s=='deployed' else exit(1)" \
+	  || (helm uninstall kube-prom -n monitoring 2>/dev/null || true)
+	@helm status loki -n monitoring --output json 2>/dev/null | \
+	  python3 -c "import sys,json; s=json.load(sys.stdin)['info']['status']; exit(0) if s=='deployed' else exit(1)" \
+	  || (helm uninstall loki -n monitoring 2>/dev/null || true)
+	# ── 先装 helm chart（注册 CRD），再 apply ServiceMonitor ──
 	helm upgrade --install kube-prom prometheus-community/kube-prometheus-stack \
 	  --namespace monitoring \
 	  --values $(MONITORING_DIR)/helm-prometheus-values.yaml \
 	  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=$(STORAGE_CLASS) \
-	  --timeout 5m --wait
+	  --set nodeExporter.enabled=$(NODE_EXPORTER_ENABLED) \
+	  --timeout 10m --wait
 	helm upgrade --install loki grafana/loki-stack \
 	  --namespace monitoring \
 	  --values $(MONITORING_DIR)/helm-loki-values.yaml \
 	  --set loki.persistence.storageClassName=$(STORAGE_CLASS) \
-	  --timeout 5m --wait
+	  --timeout 10m --wait
+	# ── ServiceMonitor 必须在 helm 之后，CRD 才存在 ──
+	$(KUBECTL) apply -f $(MONITORING_DIR)/10-servicemonitor.yaml
 	@echo "✅ Monitoring deployed. Run 'make grafana' to access dashboard."
 
-# Port-forward Grafana 到本地（命令会占用终端，Ctrl+C 停止）
 grafana:
 	@echo ">>> Grafana: http://localhost:3000  (admin / smart-scheduler-admin)"
 	@echo "    Press Ctrl+C to stop port-forward"
 	$(KUBECTL) port-forward -n monitoring svc/kube-prom-grafana 3000:80
 
-# 卸载监控栈，应用完全不受影响
 monitoring-down:
 	@echo ">>> Uninstalling monitoring stack..."
-	helm uninstall loki     --namespace monitoring 2>/dev/null || true
+	helm uninstall loki      --namespace monitoring 2>/dev/null || true
 	helm uninstall kube-prom --namespace monitoring 2>/dev/null || true
-	$(KUBECTL) delete -f $(MONITORING_DIR)/20-network-policy.yaml 2>/dev/null || true
 	$(KUBECTL) delete -f $(MONITORING_DIR)/10-servicemonitor.yaml 2>/dev/null || true
+	$(KUBECTL) delete -f $(MONITORING_DIR)/20-network-policy.yaml 2>/dev/null || true
 	$(KUBECTL) delete namespace monitoring 2>/dev/null || true
 	@echo "✅ Monitoring stack removed. Application is unaffected."

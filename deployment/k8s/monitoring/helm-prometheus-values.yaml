@@ -39,7 +39,7 @@ grafana:
       isDefault: false            # Prometheus 是 default，Loki 不是
       jsonData:
         maxLines: 1000
-        
+
 alertmanager:
   enabled: false                            # 学校项目不需要告警管理器
 
@@ -56,7 +56,6 @@ prometheus:
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: local-path      # deploy.sh 会用 --set 覆盖为正确的 storageClass
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
@@ -74,4 +73,4 @@ kubeProxy:
 
 # Node Exporter：采集节点 CPU / 内存 / 磁盘，保留（有实际价值）
 nodeExporter:
-  enabled: true
+  enabled: false

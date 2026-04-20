@@ -1,22 +1,6 @@
 #!/usr/bin/env bash
 # deploy.sh – Build & deploy Smart Scheduler
 # Reads ENV_MODE from .env to decide deployment target
-#
-# ── 改动说明 ──────────────────────────────────────────────────────────────
-# 新增 deploy_monitoring() 函数，在应用部署完成后调用。
-# 改动边界清晰：现有的应用部署逻辑（kustomize 部分）完全不动，
-# 只在每个 case 分支末尾追加 deploy_monitoring 调用。
-#
-# ── 为什么在 deploy.sh 里用 helm，而不是另建一个脚本？─────────────────
-# deploy.sh 已经是"一键部署"的单一入口，团队成员只需要跑这一个脚本。
-# 把监控部署拆成另一个脚本会增加操作步骤和文档维护负担。
-# helm install 命令幂等性强（--install 让 upgrade 在首次也能工作），
-# 放在同一脚本末尾不会有副作用。
-#
-# ── storageClass 的动态注入 ───────────────────────────────────────────────
-# helm-prometheus-values.yaml 和 helm-loki-values.yaml 里写的是 local-path，
-# 在 cloud 环境需要改成 gp3。通过 --set 参数在运行时覆盖，
-# 与应用 PVC 的 storage-patch.yaml 保持相同的动态注入思路。
 
 set -euo pipefail
 
@@ -46,24 +30,18 @@ docker build -t smart_scheduler_frontend:latest \
   "$PROJECT_ROOT/FrontEnd"
 
 # ══════════════════════════════════════════════════════════
-# ── [新增] deploy_monitoring：用 Helm 安装 Prometheus + Grafana + Loki
-# ══════════════════════════════════════════════════════════
+# deploy_monitoring
 # 参数：
-#   $1 = kubectl 命令（"kubectl" 或 "sudo k3s kubectl"）
-#   $2 = storageClassName（"local-path" 或 "gp3"）
-#
-# 为什么先 apply namespace 再 helm install？
-#   helm install --namespace monitoring --create-namespace 也能建 namespace，
-#   但 00-namespace.yaml 里带有我们自定义的 label，helm 建的 namespace
-#   不会有这些 label，后续 NetworkPolicy 的 namespaceSelector 会匹配失败。
-#   所以先 kubectl apply namespace，再让 helm 使用已有的 namespace。
-#
-# 为什么用 helm upgrade --install 而不是 helm install？
-#   --install 让这个命令幂等：首次执行是 install，后续执行是 upgrade。
-#   同一个 deploy.sh 可以反复执行，不会因为 release 已存在而报错。
+#   $1 = kubectl 命令
+#   $2 = storageClassName
+#   $3 = node-exporter 是否启用（"true" 或 "false"）
+#        Linux(k3s) 传 true，Mac/Win(Docker Desktop) 传 false
+#        原因：Docker Desktop 的虚拟机层不支持 node-exporter 需要的 mount 方式
+# ══════════════════════════════════════════════════════════
 deploy_monitoring() {
   local KUBECTL="$1"
   local STORAGE_CLASS="$2"
+  local NODE_EXPORTER_ENABLED="$3"   # ← 新增第三个参数
 
   echo ""
   echo ">>> [Monitoring] Applying monitoring namespace..."
@@ -85,12 +63,33 @@ deploy_monitoring() {
   helm repo add grafana              https://grafana.github.io/helm-charts             2>/dev/null || true
   helm repo update
 
+  # ── 检查上次是否安装失败，失败则先清理再重装 ──────────
+  # 原因：helm upgrade 对 failed 状态的 release 会报错，必须先 uninstall
+  if helm status kube-prom -n monitoring &>/dev/null; then
+    HELM_STATUS=$(helm status kube-prom -n monitoring --output json \
+      | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['status'])")
+    if [ "$HELM_STATUS" != "deployed" ]; then
+      echo ">>> [Monitoring] Previous kube-prom status: $HELM_STATUS. Cleaning up..."
+      helm uninstall kube-prom -n monitoring 2>/dev/null || true
+    fi
+  fi
+
+  if helm status loki -n monitoring &>/dev/null; then
+    HELM_STATUS=$(helm status loki -n monitoring --output json \
+      | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['status'])")
+    if [ "$HELM_STATUS" != "deployed" ]; then
+      echo ">>> [Monitoring] Previous loki status: $HELM_STATUS. Cleaning up..."
+      helm uninstall loki -n monitoring 2>/dev/null || true
+    fi
+  fi
+
   echo ">>> [Monitoring] Installing kube-prometheus-stack (Prometheus + Grafana)..."
   helm upgrade --install kube-prom prometheus-community/kube-prometheus-stack \
     --namespace monitoring \
     --values "$MONITORING_DIR/helm-prometheus-values.yaml" \
     --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName="$STORAGE_CLASS" \
-    --timeout 5m \
+    --set nodeExporter.enabled="$NODE_EXPORTER_ENABLED" \
+    --timeout 10m \
     --wait
 
   echo ">>> [Monitoring] Installing loki-stack (Loki + Promtail)..."
@@ -98,9 +97,12 @@ deploy_monitoring() {
     --namespace monitoring \
     --values "$MONITORING_DIR/helm-loki-values.yaml" \
     --set loki.persistence.storageClassName="$STORAGE_CLASS" \
-    --timeout 5m \
+    --timeout 10m \
     --wait
 
+  # ServiceMonitor 必须在 helm install 之后 apply
+  # 原因：ServiceMonitor 是 Prometheus Operator 的 CRD，
+  # helm install 才会注册这个 CRD，apply 必须在它之后
   echo ">>> [Monitoring] Applying ServiceMonitor (after CRD is ready)..."
   $KUBECTL apply -f "$MONITORING_DIR/10-servicemonitor.yaml"
 
@@ -114,7 +116,6 @@ deploy_monitoring() {
   echo "     Prometheus → http://kube-prom-kube-prometheus-prometheus:9090"
   echo "     Loki       → http://loki:3100"
 }
-# ══════════════════════════════════════════════════════════
 
 # ── Deploy based on ENV_MODE ─────────────────────────────
 case "$ENV_MODE" in
@@ -125,6 +126,7 @@ case "$ENV_MODE" in
       Linux)
         KUBECTL="sudo k3s kubectl"
         STORAGE_CLASS="local-path"
+        NODE_EXPORTER_ENABLED="true"    # ← 新增：Linux 支持 node-exporter
         echo ">>> OS=Linux (k3s)  storageClass=$STORAGE_CLASS"
 
         echo ">>> Importing images into k3s..."
@@ -134,6 +136,7 @@ case "$ENV_MODE" in
       Darwin|MINGW*|MSYS*|CYGWIN*)
         KUBECTL="kubectl"
         STORAGE_CLASS="hostpath"
+        NODE_EXPORTER_ENABLED="false"   # ← 新增：Mac/Win Docker Desktop 不支持
         echo ">>> OS=$OS (Docker Desktop)  storageClass=$STORAGE_CLASS"
         ;;
       *)
@@ -175,8 +178,8 @@ EOF
     echo ""
     echo "Access: $KUBECTL port-forward -n smart-scheduler svc/frontend-svc 8080:80"
 
-    # ── [新增] 部署监控栈 ──────────────────────────────────
-    deploy_monitoring "$KUBECTL" "$STORAGE_CLASS"
+    # NODE_EXPORTER_ENABLED 作为第三个参数传入
+    deploy_monitoring "$KUBECTL" "$STORAGE_CLASS" "$NODE_EXPORTER_ENABLED"
     ;;
 
   docker)
@@ -184,30 +187,14 @@ EOF
     cd "$SCRIPT_DIR"
     docker compose up -d --build
     echo ">>> Done! Frontend: http://localhost  Backend: http://localhost:8000/docs"
-    # Docker Compose 模式不部署监控（只用于本地开发，Langfuse 已足够）
     ;;
 
   cloud)
-    # ── Cloud K8s (EKS/GKE) ──
-    # Before enabling:
-    #   1. Update env-config.yaml → envs.cloud-sample: domain, imageRegistry
-    #   2. Update overlays/cloud/kustomization.yaml patch values accordingly
-    #   3. Confirm kubectl context points to cloud cluster:
-    #      kubectl config current-context
-    # Then uncomment the block below:
-    #
     # KUBECTL="kubectl"
     # STORAGE_CLASS="gp3"
-    # echo ">>> Pushing images..."
-    # docker tag smart_scheduler_backend:latest  "$REGISTRY_URL/backend:latest"
-    # docker push "$REGISTRY_URL/backend:latest"
-    # docker tag smart_scheduler_frontend:latest "$REGISTRY_URL/frontend:latest"
-    # docker push "$REGISTRY_URL/frontend:latest"
-    # echo ">>> Applying K8s manifests..."
-    # kubectl apply -k "$SCRIPT_DIR/k8s/overlays/cloud"
-    # ... secrets / configmap ...
-    # deploy_monitoring "$KUBECTL" "$STORAGE_CLASS"   # ← 取消注释启用云端监控
-    echo ">>> Cloud deployment not yet configured. See comments in deploy.sh and env-config.yaml."
+    # NODE_EXPORTER_ENABLED="true"
+    # deploy_monitoring "$KUBECTL" "$STORAGE_CLASS" "$NODE_EXPORTER_ENABLED"
+    echo ">>> Cloud deployment not yet configured. See comments in deploy.sh."
     exit 1
     ;;
 

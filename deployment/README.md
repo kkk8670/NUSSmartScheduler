@@ -22,7 +22,7 @@
 
 每次部署 / 更新代码或 yaml（一条命令搞定）
 │
-└── bash deployment/deploy.sh
+└── bash deployment/k8s-deploy.sh
        │
        ├── [1] docker build backend + frontend 镜像
        ├── [2] Linux: k3s ctr images import / Mac: 直接用（共享 daemon）
@@ -57,13 +57,13 @@ admin / smart-scheduler-admin
 停止与清理
 │
 ├── 暂停所有 Pod，数据保留，下次 start 恢复
-│      bash deployment/ops.sh stop
+│      bash deployment/k8s-ops.sh stop
 │
 ├── 删除应用，监控保留（重新 deploy.sh 可恢复，但数据库清空）
-│      bash deployment/ops.sh clean-app
+│      bash deployment/k8s-ops.sh clean-app
 │
 └── 完全清除，从零开始
-       bash deployment/ops.sh clean-all
+       bash deployment/k8s-ops.sh clean-all
 ```
 
 
@@ -342,6 +342,10 @@ pytest tests/test_scheduler.py -v
 # 5：依赖 TestClient 和 mock， 
 pytest tests/test_api.py -v
 ```
+
+单独测试llm：
+`pytest tests/llm/test_deepeval.py --override-ini="addopts=" -v -m llm`
+
 
 ## 8. langfuse
 
