@@ -29,7 +29,6 @@ langgraph-checkpoint==2.1.2
 langgraph-sdk==0.2.15
 networkx==3.3
 ortools==9.10.4067
-python-dotenv==1.0.1
 PyMySQL==1.1.2
 email-validator==2.3.0
 deepeval==3.9.7
