@@ -15,6 +15,10 @@ jobs:
   # ══════════════════════════════════════
   test:
     runs-on: ubuntu-latest
+    env:                              # ← 加在这里，job 级别
+      OPENAI_API_KEY: "sk-test-placeholder"
+      DB_URL: "sqlite:///./test.db"
+      JWT_SECRET_KEY: "ci-test-secret"
     defaults:
       run:
         working-directory: BackEnd
@@ -32,17 +36,7 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
-        env:
-          # read from GitHub Secrets  
-          OPENAI_API_KEY:  ${{ secrets.OPENAI_API_KEY }}
-          JWT_SECRET_KEY:  ${{ secrets.JWT_SECRET_KEY }}
-          DATABASE_URL:    ${{ secrets.DATABASE_URL }}
-          WEAVIATE_URL:    ${{ secrets.WEAVIATE_URL }}
-          # not sensitive
-          JWT_ALGORITHM:        HS256
-          JWT_EXPIRE_MINUTES:   60
-          AGENT_MODEL:          gpt-4o-mini
-          AGENT_TEMPERATURE:    "0"
+ 
 
   # ══════════════════════════════════════
   # Job 2: Dependent Security Scanning
