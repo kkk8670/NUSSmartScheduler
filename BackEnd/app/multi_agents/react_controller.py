@@ -1,21 +1,16 @@
 from __future__ import annotations
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, Optional
 import json
-
 from langchain_openai import ChatOpenAI
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.tools import render_text_description
-
+from langgraph.prebuilt import create_react_agent
 from app.multi_agents.dialogue_agent import dialogue_agent_tool
 from app.multi_agents.knowledge_agent import knowledge_agent_tool
 from app.multi_agents.memory_agent import memory_agent_tool
 from app.multi_agents.reranker_agent import reranker_agent_tool
 from app.multi_agents.tools.react_trace import ReactTraceHandler
-
 from app.agent import prompts
 from app.core.config import settings
-from app.core.tracing import make_lc_handler # adding langfuse
+from app.core.tracing import make_lc_handler
 from app.multi_agents.verification_agent import verification_agent_tool
 from app.tool_lc import (
     memory_search_tool,
@@ -23,25 +18,13 @@ from app.tool_lc import (
     schedule_suggest_tool,
 )
 
-def build_react_prompt() -> ChatPromptTemplate:
-    return ChatPromptTemplate.from_messages([
-        (
-            "system",
-            prompts.REACT_SYSTEM
-            + "\n\n---\n"
-            + "Available tools:\n{tools}\n"
-            + "You can call: {tool_names}"
-        ),
-        ("user", "{input}"),
-        ("assistant", "{agent_scratchpad}"),
-    ])
-
+ 
 
 def run_react_agent(
     user_prompt: str,
     *,
-    user_id: Optional[str] = None,       # add
-    session_id: Optional[str] = None,    # add
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> Tuple[List[dict], Dict[str, Any]]:
     tools = [
         dialogue_agent_tool,
@@ -51,17 +34,12 @@ def run_react_agent(
         schedule_suggest_tool,
         verification_agent_tool,
     ]
-
     llm = ChatOpenAI(
         model=getattr(settings, "AGENT_MODEL", "gpt-4o-mini-2024-07-18"),
         temperature=0,
         api_key=settings.OPENAI_API_KEY,
     )
 
-    prompt = build_react_prompt()  # 交给 LC 绑定工具，不手工渲染
-    agent = create_react_agent(llm, tools, prompt)
-    
-    # ── callbacks：ReactTraceHandler（前端 steps）+ Langfuse（可观测性）──
     tracer = ReactTraceHandler()
     lf_handlers = make_lc_handler(
         trace_name="react-agent",
@@ -69,31 +47,27 @@ def run_react_agent(
         session_id=session_id,
         metadata={"agent_model": settings.AGENT_MODEL},
     )
-    # lf_handlers 在 Langfuse 未配置时为 []，不影响 tracer
-    all_callbacks = [tracer] + lf_handlers   
+    all_callbacks = [tracer] + lf_handlers
 
-    executor = AgentExecutor(
-        agent=agent,
+    graph = create_react_agent(
+        model=llm,
         tools=tools,
-        verbose=True,                  # 必须打开，便于回调拿到日志
-        handle_parsing_errors=True,
-        max_iterations=12,
-        return_intermediate_steps=True,
-        callbacks=all_callbacks, 
+        prompt=prompts.REACT_SYSTEM,
     )
 
-    result = executor.invoke({"input": user_prompt})
+    result = graph.invoke(
+        {"messages": [("user", user_prompt)]},
+        config={"callbacks": all_callbacks},
+    )
 
-    # 最终输出通常在 result["output"]，可能是 JSON 字符串
-    out_str = (result.get("output") or "").strip()
+    last_msg = result["messages"][-1]
+    out_str = (last_msg.content or "").strip()
+
     final: Dict[str, Any]
     try:
-        import json
         final = json.loads(out_str)
-        # 期望结构：{"reply": str, "plan": [...], "schedule": ..., "evidence": [...], "notes": [...]}
         if not isinstance(final, dict):
-            raise ValueError("final is not dict")
-        # 兜底字段
+            raise ValueError
         final.setdefault("reply", out_str)
         final.setdefault("plan", [])
         final.setdefault("schedule", None)
