@@ -26,10 +26,10 @@ PyMySQL==1.1.2
 
 # --- AI & LangChain  ---
 langchain==0.3.28
-langchain-community==0.3.26
-langchain-core==0.3.63
-langchain-openai==0.3.9
-langchain-text-splitters==0.3.8
+langchain-community==0.3.31
+langchain-core==0.3.84
+langchain-openai==0.3.19
+langchain-text-splitters==0.3.28
 langchain-weaviate==0.0.6
 langgraph==0.2.60
 
