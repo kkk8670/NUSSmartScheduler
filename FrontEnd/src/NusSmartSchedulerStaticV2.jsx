@@ -239,7 +239,6 @@ export default function NUSSmartSchedulerStaticV2() {
 
   return (
       <div className="app">
-        {/* Header */}
         <header className="header">
           <div className="container header__inner">
             <div className="brand">
