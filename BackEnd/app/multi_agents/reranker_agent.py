@@ -2,7 +2,7 @@
 from typing import Any, Dict, List
 from difflib import SequenceMatcher
 from pydantic import BaseModel, Field
-from langchain.tools import StructuredTool
+from langchain_core.tools import StructuredTool
 
 class RerankInput(BaseModel):
     query: str = Field(..., description="The user's query/context")

@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List
 from pydantic import BaseModel, Field
-from langchain.tools import StructuredTool
+from langchain_core.tools import StructuredTool
 from app.core.config import settings
 from app.core.logging import jlog
 

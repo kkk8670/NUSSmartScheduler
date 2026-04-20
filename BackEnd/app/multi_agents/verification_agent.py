@@ -1,7 +1,7 @@
 
 from typing import Any, Dict, List, Union
 from pydantic import BaseModel, Field
-from langchain.tools import StructuredTool
+from langchain_core.tools import StructuredTool
 import json
 
 try:

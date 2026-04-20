@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
 from pydantic import BaseModel, Field
-from langchain.tools import StructuredTool
+from langchain_core.tools import StructuredTool
 from uuid import uuid4
 
 try:

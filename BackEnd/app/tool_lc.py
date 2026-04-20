@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-from langchain.tools import tool
+from langchain_core.tools import tool
 from fastapi import Request
 
 # ---------- memory_search（后面你再接 Weaviate） ----------
