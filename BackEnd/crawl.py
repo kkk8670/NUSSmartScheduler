@@ -16,7 +16,6 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 try:
-    # Python 3.9+: zoneinfo is stdlib
     from zoneinfo import ZoneInfo
     SG_TZ = ZoneInfo("Asia/Singapore")
 except Exception:
