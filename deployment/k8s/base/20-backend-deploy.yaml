@@ -54,6 +54,21 @@ spec:
                 secretKeyRef:
                   name: app-secret
                   key: OPENAI_API_KEY
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: LANGFUSE_PUBLIC_KEY
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: LANGFUSE_SECRET_KEY
+            - name: LANGFUSE_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: LANGFUSE_BASE_URL
           readinessProbe:
             httpGet:
               path: /docs

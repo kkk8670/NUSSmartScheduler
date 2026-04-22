@@ -159,6 +159,9 @@ EOF
       --from-literal=MYSQL_ROOT_PASSWORD="$MYSQL_PASSWORD" \
       --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" \
       --from-literal=DB_URL="mysql+pymysql://root:${MYSQL_PASSWORD}@mysql-svc:3306/${MYSQL_DATABASE}" \
+      --from-literal=LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY" \
+      --from-literal=LANGFUSE_SECRET_KEY="$LANGFUSE_SECRET_KEY" \
+      --from-literal=LANGFUSE_BASE_URL="https://us.cloud.langfuse.com" \
       --namespace=smart-scheduler \
       --dry-run=client -o yaml | $KUBECTL apply -f -
 
