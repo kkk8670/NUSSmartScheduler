@@ -58,12 +58,15 @@ jobs:
         uses: bridgecrewio/checkov-action@master
         with:
           directory: .
-          framework: kubernetes,dockerfile,docker_compose
+          # `kubernetes` covers K8s manifests; `dockerfile` covers Dockerfiles.
+          # docker-compose YAML is scanned under the generic `yaml` framework.
+          framework: kubernetes,dockerfile
           output_format: cli,sarif
           output_file_path: console,checkov-report.sarif
-          # academic project: surface findings but don't block CI
-          # (production should set this to true)
-          soft_fail: true
+          # We've already remediated all kubernetes findings (74 -> 0 with
+          # 22 documented skips). Set soft_fail=false so any new finding
+          # introduced in a future PR will block the build.
+          soft_fail: false
           # narrow scope to deployment/ + Dockerfiles to avoid scanning irrelevant YAMLs
           # skip_path: .github/
 
