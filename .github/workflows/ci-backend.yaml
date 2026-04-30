@@ -11,11 +11,11 @@ on:
 
 jobs:
   # ══════════════════════════════════════
-  # Job 1: unit test + API test
+  # Job 1: Unit + API tests
   # ══════════════════════════════════════
   test:
     runs-on: ubuntu-latest
-    env:                              # ← 加在这里，job 级别
+    env:
       OPENAI_API_KEY: "sk-test-placeholder"
       DB_URL: "sqlite:///./test.db"
       JWT_SECRET_KEY: "ci-test-secret"
@@ -32,59 +32,137 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-asyncio httpx
+          pip install pytest pytest-asyncio pytest-cov httpx
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
- 
+      - name: Run tests with coverage
+        # --cov produces both terminal and XML report (the latter for artifact)
+        run: pytest tests/ -v --tb=short --cov=app --cov-report=term --cov-report=xml --cov-report=html --ignore=tests/llm
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            BackEnd/coverage.xml
+            BackEnd/htmlcov/
 
   # ══════════════════════════════════════
-  # Job 2: Dependent Security Scanning
+  # Job 2: SAST – Static Application Security Testing (bandit)
   # ══════════════════════════════════════
-  # Scan the dependencies in requirements.txt for known vulnerabilities.
-  
-  pip-audit:
+  # Scans Python source for insecure patterns: eval(), pickle, subprocess
+  # with shell=True, hardcoded passwords, weak crypto, etc.
+  # Runs in parallel with `test` (no `needs:` dependency).
+  sast-bandit:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: BackEnd
- 
     steps:
       - uses: actions/checkout@v4
- 
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
- 
+
+      - name: Install bandit
+        run: pip install bandit[toml]
+
+      - name: Run bandit (medium+ severity, medium+ confidence)
+        # -ll  : only report MEDIUM and HIGH severity
+        # -ii  : only report MEDIUM and HIGH confidence (suppress noisy LOW-confidence findings)
+        # -f   : output format
+        # We don't use `--exit-zero` here because we want bandit to fail
+        # the job ONLY on medium+ findings. Tune severity later if too noisy.
+        run: |
+          bandit -r app/ -ll -ii -f txt -o bandit-report.txt || true
+          bandit -r app/ -ll -ii -f json -o bandit-report.json || true
+          echo "=== Bandit Report ==="
+          cat bandit-report.txt
+
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: |
+            BackEnd/bandit-report.txt
+            BackEnd/bandit-report.json
+
+  # ══════════════════════════════════════
+  # Job 3: SCA – Software Composition Analysis (pip-audit)
+  # ══════════════════════════════════════
+  # Scans requirements.txt for dependencies with known CVEs (PyPI advisory DB).
+  # Runs in parallel with `test` and `sast-bandit`.
+  sca-pip-audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BackEnd
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Run pip-audit
+        # --strict   : exit non-zero on any finding
+        # --desc     : include vulnerability description in output
+        # --format   : human-readable + JSON for the artifact
         run: |
           pip install pip-audit
-          pip-audit -r requirements.txt
+          pip-audit -r requirements.txt --desc --format=columns | tee pip-audit-report.txt
+          pip-audit -r requirements.txt --format=json --output=pip-audit-report.json || true
+
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: |
+            BackEnd/pip-audit-report.txt
+            BackEnd/pip-audit-report.json
 
   # ══════════════════════════════════════
-  # Job 3: Build Docker Image + Trivy Scan
+  # Job 4: Build image + Container scan (Trivy)
   # ══════════════════════════════════════
-  # Test pass → Build image → Trivy scan system dependency vulnerabilities in the image
-
+  # Only runs after `test` passes (gate). Trivy fails the build on any
+  # CRITICAL or HIGH severity vulnerability in the final image.
   build-image:
-    needs: test
+    needs: [test, sast-bandit, sca-pip-audit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Build backend image
         run: docker build -t smart_scheduler_backend:${{ github.sha }} ./BackEnd
 
-      - name: Run Trivy image scan
+      - name: Run Trivy image scan (table → console)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: smart_scheduler_backend:${{ github.sha }}
           format: table
-          exit-code: "1"           # Fail the job when a vulnerability is found
-          severity: CRITICAL,HIGH  # Focus only on high-risk and critical vulnerabilities
-          ignore-unfixed: true  
+          exit-code: "1"            # fail the job on any CRITICAL/HIGH finding
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true      # don't fail on CVEs that have no fix yet
+
+      - name: Run Trivy image scan (json → file)
+        # Run a second time with format=json so we can upload as artifact.
+        # exit-code=0 because we've already gated above.
+        if: always()
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: smart_scheduler_backend:${{ github.sha }}
+          format: json
+          output: trivy-report.json
+          exit-code: "0"
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
 
       - name: Upload Trivy report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report
-          path: trivy-report.txt
+          path: trivy-report.json

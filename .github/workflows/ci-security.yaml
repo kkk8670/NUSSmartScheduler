@@ -1,0 +1,75 @@
+# .github/workflows/ci-security.yaml
+# Cross-repo security scans that don't belong to backend/frontend specifically.
+# - gitleaks: scans entire repo + git history for accidentally committed secrets
+# - checkov: scans K8s manifests + Dockerfile for IaC misconfigurations
+name: CI – Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # weekly scheduled scan to catch newly disclosed CVEs / leaked credentials
+  schedule:
+    - cron: "0 3 * * 1"   # every Monday 03:00 UTC
+
+jobs:
+  # ══════════════════════════════════════
+  # Job 1: Secret Scanning (gitleaks)
+  # ══════════════════════════════════════
+  # Scans the entire git history for accidentally committed secrets
+  # (API keys, JWT secrets, DB passwords, .env contents).
+  # This is *active* defense, complementing the *passive* .gitignore policy.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history required for gitleaks to work properly
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Fail the build when any secret is detected
+          # config-path: .gitleaks.toml   # uncomment if you add custom rules later
+          args: detect --source . --verbose --redact --report-format sarif --report-path gitleaks-report.sarif
+
+      - name: Upload gitleaks report
+        if: always()   # upload even if scan fails so we can inspect findings
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.sarif
+
+  # ══════════════════════════════════════
+  # Job 2: IaC Scanning (checkov)
+  # ══════════════════════════════════════
+  # Scans Kubernetes manifests, Dockerfiles, and docker-compose files for
+  # security misconfigurations (root user, missing resource limits,
+  # missing securityContext, image with :latest tag, etc.)
+  iac-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Checkov on K8s manifests + Dockerfiles
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: kubernetes,dockerfile,docker_compose
+          output_format: cli,sarif
+          output_file_path: console,checkov-report.sarif
+          # academic project: surface findings but don't block CI
+          # (production should set this to true)
+          soft_fail: true
+          # narrow scope to deployment/ + Dockerfiles to avoid scanning irrelevant YAMLs
+          # skip_path: .github/
+
+      - name: Upload Checkov report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-report
+          path: checkov-report.sarif

@@ -10,6 +10,9 @@ on:
     paths: [FrontEnd/**]
 
 jobs:
+  # ══════════════════════════════════════
+  # Job 1: Lint + Build
+  # ══════════════════════════════════════
   lint-and-build:
     runs-on: ubuntu-latest
     defaults:
@@ -21,6 +24,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: "npm"
+          cache-dependency-path: FrontEnd/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -31,10 +36,59 @@ jobs:
       - name: Build
         run: npm run build
 
+  # ══════════════════════════════════════
+  # Job 2: SCA – npm audit (frontend dependency scan)
+  # ══════════════════════════════════════
+  # Mirror of pip-audit on the backend side. Fails on high/critical
+  # vulnerabilities in npm dependencies.
+  sca-npm-audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FrontEnd
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: FrontEnd/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit (gating high+)
+        # --audit-level=high   : exit code 1 only for high/critical
+        # We run twice: first json for the artifact, then human-readable + gate.
+        run: |
+          npm audit --json > npm-audit-report.json || true
+          echo "=== npm audit summary ==="
+          npm audit --audit-level=high
+
+      - name: Upload npm audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: FrontEnd/npm-audit-report.json
+
+  # ══════════════════════════════════════
+  # Job 3: Build image (gated on lint + audit)
+  # ══════════════════════════════════════
   build-image:
-    needs: lint-and-build
+    needs: [lint-and-build, sca-npm-audit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build frontend image
         run: docker build -t smart_scheduler_frontend:${{ github.sha }} --build-arg VITE_BACKEND_URL="" ./FrontEnd
+
+      - name: Run Trivy on frontend image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: smart_scheduler_frontend:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
