@@ -48,7 +48,10 @@ def _make_session_id(user_id: str) -> str:
     """
     minute_bucket = int(time.time() // 60)
     raw = f"{user_id}-{minute_bucket}"
-    return hashlib.md5(raw.encode()).hexdigest()[:16]
+    # Non-cryptographic fingerprint for Langfuse session grouping; MD5 is
+    # safe here because the output is never used for authentication, signing,
+    # or anything where collision resistance matters.
+    return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 
