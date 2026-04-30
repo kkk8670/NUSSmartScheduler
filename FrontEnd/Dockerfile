@@ -39,4 +39,11 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 8080
 
+# Container-level health probe (CKV_DOCKER_2). Used by Docker / docker-compose
+# directly. K8s uses its own livenessProbe/readinessProbe (see deployment YAML)
+# and ignores this, but having it here means the image is also self-checking
+# when run outside K8s (local docker run, staging compose, etc.).
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:8080/ || exit 1
+
 CMD ["nginx", "-g", "daemon off;"]
