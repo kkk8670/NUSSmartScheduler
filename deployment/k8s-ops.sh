@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# ops.sh — 停止 / 清理 Smart Scheduler
+# k8s-ops.sh — 停止 / 清理 Smart Scheduler
 # 用法：
-#   bash deployment/ops.sh stop          暂停所有 Pod，保留数据
-#   bash deployment/ops.sh start         恢复已暂停的 Pod
-#   bash deployment/ops.sh clean-app     删除应用（数据丢失），保留监控
-#   bash deployment/ops.sh clean-all     删除应用 + 监控，全部清除
-#   bash deployment/ops.sh status        查看所有 Pod 状态
+#   bash deployment/k8s-ops.sh stop          暂停所有 Pod，保留数据
+#   bash deployment/k8s-ops.sh start         恢复已暂停的 Pod
+#   bash deployment/k8s-ops.sh clean-app     删除应用（数据丢失），保留监控
+#   bash deployment/k8s-ops.sh clean-all     删除应用 + 监控，全部清除
+#   bash deployment/k8s-ops.sh status        查看所有 Pod 状态
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ case "$ACTION" in
     $KUBECTL scale deployment backend frontend mysql weaviate \
       --replicas=0 -n smart-scheduler 2>/dev/null || true
     echo "✅ All app pods stopped. PVC data is intact."
-    echo "   Run 'bash deployment/ops.sh start' to resume."
+    echo "   Run 'bash deployment/k8s-ops.sh start' to resume."
     ;;
 
   start)
@@ -33,7 +33,7 @@ case "$ACTION" in
     $KUBECTL scale deployment backend frontend mysql weaviate \
       --replicas=1 -n smart-scheduler 2>/dev/null || true
     echo "✅ App pods starting. Check status:"
-    echo "   bash deployment/ops.sh status"
+    echo "   bash deployment/k8s-ops.sh status"
     ;;
 
   clean-app)
@@ -73,13 +73,13 @@ case "$ACTION" in
     ;;
 
   *)
-    echo "Usage: bash deployment/ops.sh <action>"
+    echo "Usage: bash deployment/k8s-ops.sh <action>"
     echo ""
-    echo "  stop        暂停所有 Pod（保留数据，可 start 恢复）"
-    echo "  start       恢复已暂停的 Pod"
-    echo "  clean-app   删除应用 namespace（数据丢失），保留监控"
-    echo "  clean-all   删除所有（数据丢失）"
-    echo "  status      查看所有 Pod 状态"
+    echo "  stop        Pause all Pods (data retained; can be resumed with start)"
+    echo "  start       Resume paused Pods"
+    echo "  clean-app   Delete the application namespace (data will be lost), keep monitoring"
+    echo "  clean-all   Delete everything (data will be lost)"
+    echo "  status      Check the status of all Pods"
     ;;
 
 esac

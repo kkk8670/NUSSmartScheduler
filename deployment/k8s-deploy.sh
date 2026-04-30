@@ -22,10 +22,10 @@ echo ">>> ENV_MODE = $ENV_MODE"
 
 # ── Build images ─────────────────────────────────────────
 echo ">>> Building backend image..."
-docker build -t smart_scheduler_backend:latest "$PROJECT_ROOT/BackEnd"
+docker build -t smart_scheduler_backend:1.0.0 "$PROJECT_ROOT/BackEnd"
 
 echo ">>> Building frontend image..."
-docker build -t smart_scheduler_frontend:latest \
+docker build -t smart_scheduler_frontend:1.0.0 \
   --build-arg VITE_BACKEND_URL="" \
   "$PROJECT_ROOT/FrontEnd"
 
