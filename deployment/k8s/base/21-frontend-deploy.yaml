@@ -1,8 +1,23 @@
+# deployment/k8s/base/21-frontend-deploy.yaml
+#
+# ── Hardening (per checkov scan, see §3.4) ─────────────────────────────────
+# Frontend uses nginxinc/nginx-unprivileged:1.27-alpine which runs as UID 101
+# and listens on port 8080 (unprivileged). The Service exposes :80 so the
+# external API contract is unchanged.
+#
+# Skipped checks (explicit reason inline):
+#   - CKV_K8S_43 (image digest):  same as backend — deferred to cloud overlay.
+# ──────────────────────────────────────────────────────────────────────────
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
   namespace: smart-scheduler
+  annotations:
+    checkov.io/skip1: CKV_K8S_43=Image digest pinning deferred to cloud overlay (see report 4.4)
+    checkov.io/skip2: CKV_K8S_15=imagePullPolicy IfNotPresent is intentional for local dev (see report 4.2); cloud overlay patches to Always
+    checkov.io/skip3: CKV_K8S_40=nginxinc/nginx-unprivileged ships with UID 101; chosen for hardened nginx behaviour
 spec:
   replicas: 1
   selector:
@@ -13,12 +28,81 @@ spec:
       labels:
         app: frontend
     spec:
+      automountServiceAccountToken: false       # CKV_K8S_38
+
+      # CKV_K8S_29: pod-level securityContext.
+      # nginxinc/nginx-unprivileged ships with UID 101 baked in.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault                  # CKV_K8S_31
+
       containers:
         - name: frontend
-          image: smart_scheduler_frontend:latest
+          image: smart_scheduler_frontend:1.0.0   # CKV_K8S_14: pinned tag
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 80
+            - containerPort: 8080                 # unprivileged port
+              name: http
+
+          # CKV_K8S_30: container-level securityContext
+          securityContext:
+            allowPrivilegeEscalation: false       # CKV_K8S_20
+            readOnlyRootFilesystem: true          # CKV_K8S_22
+            capabilities:
+              drop: ["ALL"]                       # CKV_K8S_28/37
+
+          # nginx writes pid + caches to a few directories; emptyDir tmpfs
+          # keeps rootfs read-only.
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+
+          # CKV_K8S_10/11/12/13: resources
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+          # CKV_K8S_8/9: probes
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+      volumes:
+        - name: nginx-cache
+          emptyDir:
+            sizeLimit: 32Mi
+        - name: nginx-run
+          emptyDir:
+            sizeLimit: 8Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
 
 ---
 apiVersion: v1
@@ -30,5 +114,5 @@ spec:
   selector:
     app: frontend
   ports:
-    - port: 80
-      targetPort: 80
+    - port: 80              # cluster-facing port (unchanged contract)
+      targetPort: 8080      # mapped to unprivileged container port

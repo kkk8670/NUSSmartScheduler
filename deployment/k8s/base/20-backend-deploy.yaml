@@ -1,25 +1,38 @@
 # deployment/k8s/base/20-backend-deploy.yaml
 #
-# ── 改动说明 ──────────────────────────────────────────────────────────────
-# 在 Pod template metadata 里新增 prometheus.io/* annotations。
+# ── Purpose ────────────────────────────────────────────────────────────────
+# Backend Deployment + Service.
 #
-# 为什么要加这几行 annotations？
-#   Prometheus Operator（通过 kube-prometheus-stack 安装）使用两种发现方式：
-#     1. ServiceMonitor CRD（精确，推荐）→ 我们在 monitoring/ 目录里单独定义
-#     2. Pod annotations（兼容旧版，无需 CRD）
-#   这里同时加上 annotations 是双保险：即使 ServiceMonitor 未就绪，
-#   Prometheus 的 pod-level scrape 也能发现 /metrics。
-#   annotations 不影响运行时任何行为，只是元数据。
+# ── Hardening (per checkov scan, see §3.4) ─────────────────────────────────
+# This file applies the K8s baseline hardening:
+#   - Resource requests + limits         (CKV_K8S_10/11/12/13)
+#   - Liveness + readiness probes        (CKV_K8S_8/9)
+#   - Pinned image tag (no :latest)      (CKV_K8S_14)
+#   - Pod-level securityContext          (CKV_K8S_29) — non-root, high UID
+#   - Container-level securityContext    (CKV_K8S_30) — drop ALL caps,
+#                                                       no privilege escalation,
+#                                                       read-only root FS,
+#                                                       seccomp RuntimeDefault
+#   - automountServiceAccountToken=false (CKV_K8S_38)
 #
-# prometheus.io/scrape: "true"   → 告诉 Prometheus 这个 Pod 需要被采集
-# prometheus.io/port:   "8000"   → 采集端口（和 containerPort 一致）
-# prometheus.io/path:   "/metrics" → 端点路径（instrumentator 默认值）
+# Skipped checks (with explicit reason inline):
+#   - CKV_K8S_43 (image digest pinning):  deferred to production cloud overlay
+#                                         where a real registry is configured.
+# ──────────────────────────────────────────────────────────────────────────
 
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
   namespace: smart-scheduler
+  annotations:
+    # Image-digest pinning requires a real container registry (e.g. ECR/GCR)
+    # which is out of scope for the local k3s/Docker-Desktop overlay. The
+    # production overlay (deployment/k8s/overlays/cloud) will add a Kustomize
+    # patch substituting the digest at apply time.
+    checkov.io/skip1: CKV_K8S_43=Image digest pinning deferred to cloud overlay (see report 4.4)
+    checkov.io/skip2: CKV_K8S_15=imagePullPolicy IfNotPresent is intentional for local dev (see report 4.2); cloud overlay patches to Always
+    checkov.io/skip3: CKV_K8S_35=Env-based secret injection is project-wide convention (see report 2.4)
 spec:
   replicas: 1
   selector:
@@ -29,17 +42,49 @@ spec:
     metadata:
       labels:
         app: backend
-      annotations:                             # ← 新增
-        prometheus.io/scrape: "true"           # ← 新增
-        prometheus.io/port:   "8000"           # ← 新增
-        prometheus.io/path:   "/metrics"       # ← 新增
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "8000"
+        prometheus.io/path:   "/metrics"
     spec:
+      # CKV_K8S_38: no app code calls the K8s API; SA token would only be
+      # extra attack surface if the pod were compromised.
+      automountServiceAccountToken: false
+
+      # CKV_K8S_29: pod-level securityContext (defaults for all containers)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001        # high UID, see Dockerfile (CKV_K8S_40)
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault   # CKV_K8S_31
+
       containers:
         - name: backend
-          image: smart_scheduler_backend:latest
+          # Pinned tag (CKV_K8S_14). The CD pipeline overrides this via
+          # `kubectl set image` to ${github.sha} on each deploy. The base
+          # value here is the "known-good" fallback for `kubectl apply` only.
+          image: smart_scheduler_backend:1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
+              name: http
+
+          # CKV_K8S_30: container-level securityContext (defense in depth)
+          securityContext:
+            allowPrivilegeEscalation: false   # CKV_K8S_20
+            readOnlyRootFilesystem: true      # CKV_K8S_22
+            capabilities:
+              drop: ["ALL"]                   # CKV_K8S_28/37
+
+          # FastAPI/uvicorn writes nothing to disk in production except
+          # /tmp (httpx temp downloads, etc.). Mount tmpfs there so the
+          # rootfs can stay read-only.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
           envFrom:
             - configMapRef:
                 name: app-config
@@ -69,12 +114,41 @@ spec:
                 secretKeyRef:
                   name: app-secret
                   key: LANGFUSE_BASE_URL
+
+          # CKV_K8S_10/11/12/13: resource requests + limits.
+          # Sized for local dev (Docker Desktop); cloud overlay can patch.
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+
+          # CKV_K8S_8: liveness probe — restarts pod if uvicorn hangs.
+          livenessProbe:
+            httpGet:
+              path: /docs
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # CKV_K8S_9: readiness probe — gates Service traffic routing.
           readinessProbe:
             httpGet:
               path: /docs
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
 
 ---
 apiVersion: v1
@@ -82,7 +156,7 @@ kind: Service
 metadata:
   name: backend-svc
   namespace: smart-scheduler
-  labels:              
+  labels:
     app: backend
 spec:
   selector:
