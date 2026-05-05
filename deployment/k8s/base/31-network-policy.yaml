@@ -1,4 +1,18 @@
-# ── Default: deny all ingress within namespace ── 
+# deployment/k8s/base/31-network-policy.yaml
+#
+# ── 修复记录 ────────────────────────────────────────────────────────────────
+# allow-frontend: port 由 80 改为 8080
+#   原因：frontend 使用 nginxinc/nginx-unprivileged，容器实际监听 8080。
+#         GCE Ingress 的 health probe 直接打到 Pod port 8080，
+#         原来的 port 80 规则会把 probe 拦掉，导致 Pod 一直报 unhealthy。
+#         Service 层的 80→8080 mapping 不影响 NetworkPolicy 匹配（NP 看的是 Pod port）。
+#
+# allow-frontend / allow-backend：from 字段保持空（允许任意源），
+#   因为 GCE Ingress 的 health probe 来自节点 IP，不在任何 namespace/pod selector 里，
+#   必须允许无 from 限制才能让 probe 通过。
+# ──────────────────────────────────────────────────────────────────────────
+
+# ── Default: deny all ingress within namespace ──
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -10,7 +24,8 @@ spec:
     - Ingress
 
 ---
-# ── Allow: traffic → Frontend ── 
+# ── Allow: traffic → Frontend ──
+# port 修正为 8080（nginx-unprivileged 实际监听端口）
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -20,12 +35,14 @@ spec:
   podSelector:
     matchLabels:
       app: frontend
+  policyTypes:
+    - Ingress
   ingress:
     - ports:
-        - port: 80
+        - port: 8080        # 修正：原为 80，容器实际监听 8080
 
 ---
-# ── Allow: traffic → Backend ── 
+# ── Allow: traffic → Backend ──
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -35,6 +52,8 @@ spec:
   podSelector:
     matchLabels:
       app: backend
+  policyTypes:
+    - Ingress
   ingress:
     - ports:
         - port: 8000
@@ -50,6 +69,8 @@ spec:
   podSelector:
     matchLabels:
       app: mysql
+  policyTypes:
+    - Ingress
   ingress:
     - from:
         - podSelector:
@@ -69,6 +90,8 @@ spec:
   podSelector:
     matchLabels:
       app: weaviate
+  policyTypes:
+    - Ingress
   ingress:
     - from:
         - podSelector:

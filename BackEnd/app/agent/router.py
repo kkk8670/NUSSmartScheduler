@@ -2,7 +2,8 @@
 
 import os 
 import hashlib, time
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
+from app.core.limiter import limiter
 from pydantic import BaseModel
 
 from typing import Dict, Any, List, Optional
@@ -56,7 +57,8 @@ def _make_session_id(user_id: str) -> str:
 
 
 @router.post("/chat", response_model=ChatOut)
-def chat(body: ChatIn, me: TokenData = Depends(get_current_user)) -> ChatOut:
+@limiter.limit("10/minute")
+def chat(request: Request, body: ChatIn, me: TokenData = Depends(get_current_user)) -> ChatOut:
     print(f"🔍 接口实时检查: settings.LANGFUSE_HOST = {settings.LANGFUSE_HOST}")
     print(f"🔍 DEBUG: Public Key = {os.environ.get('LANGFUSE_PUBLIC_KEY', '')[:10]}...")
 
@@ -66,9 +68,11 @@ def chat(body: ChatIn, me: TokenData = Depends(get_current_user)) -> ChatOut:
         raise HTTPException(status_code=500, detail=f"agent_chat_error: {e}")
 
 @router.post("/chat/react", response_model=ReactOut)
+@limiter.limit("10/minute")
 def chat_react(
+    request: Request,
     body: ChatIn,
-    current_user: User = Depends(get_current_user),   # ← 新增：拿到登录用户
+    current_user: User = Depends(get_current_user),
 ):
     try:
         uid = str(current_user.id)

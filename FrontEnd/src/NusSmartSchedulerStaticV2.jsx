@@ -376,8 +376,10 @@ export default function NUSSmartSchedulerStaticV2() {
                             meta={p.meta}
                             active={i === activePlan}   // 高亮当前选中
                             onClick={() => {
+                              // eslint-disable-next-line security/detect-object-injection
                               if (planTimelines[i]) {
                                 setActivePlan(i);
+                                // eslint-disable-next-line security/detect-object-injection
                                 setTimeline(planTimelines[i]); // 切换时间线
                               }
                             }}

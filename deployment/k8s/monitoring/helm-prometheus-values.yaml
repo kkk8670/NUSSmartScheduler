@@ -23,36 +23,43 @@
 # storageSpec：
 #   给 Prometheus 的 TSDB 数据分配独立 PVC。
 #   storageClassName 在 deploy.sh 里通过 --set 动态覆盖（和应用 PVC 同逻辑）。
+# deployment/k8s/monitoring/helm-prometheus-values.yaml
+#
+# SMTP 凭据（host / user / password / from_address）不在这里写，
+# 全部通过 deploy.sh 里的 helm upgrade --set 注入，来源是 .env 或 CI secrets。
+# 这里只保留 smtp.enabled: true 作为开关。
 
 grafana:
   enabled: true
-  adminPassword: "smart-scheduler-admin"   # 本地演示用；生产通过 --set 覆盖
+  adminPassword: "smart-scheduler-admin"   # 本地演示用；cloud 部署时 deploy.sh 用 --set 覆盖
   persistence:
-    enabled: false                          # 本地不持久化 Grafana dashboard（用 ConfigMap 导入代替）
+    enabled: false
   service:
-    type: ClusterIP                         # 通过 port-forward 访问，不对外暴露
-  additionalDataSources:          # ← 新增这一块
+    type: ClusterIP
+
+  grafana.ini:
+    smtp:
+      enabled: true                         # 凭据由 deploy.sh --set 注入，不在此处填写
+
+  additionalDataSources:
     - name: Loki
       type: loki
       url: http://loki:3100
       access: proxy
-      isDefault: false            # Prometheus 是 default，Loki 不是
+      isDefault: false
       jsonData:
         maxLines: 1000
 
 alertmanager:
-  enabled: false                            # 学校项目不需要告警管理器
+  enabled: false
 
 prometheus:
   prometheusSpec:
-    # 让 Prometheus 发现所有 namespace 的 ServiceMonitor，不限于 Helm release
     serviceMonitorSelectorNilUsesHelmValues: false
     serviceMonitorSelector: {}
     serviceMonitorNamespaceSelector: {}
-
-    retention: 7d                           # TSDB 数据保留 7 天
-    retentionSize: "4GB"                    # 磁盘上限 4GB
-
+    retention: 7d
+    retentionSize: "4GB"
     storageSpec:
       volumeClaimTemplate:
         spec:
@@ -61,7 +68,6 @@ prometheus:
             requests:
               storage: 5Gi
 
-# 关闭在本地 k3s 环境容易报错的组件监控
 kubeEtcd:
   enabled: false
 kubeControllerManager:
@@ -71,6 +77,5 @@ kubeScheduler:
 kubeProxy:
   enabled: false
 
-# Node Exporter：采集节点 CPU / 内存 / 磁盘，保留（有实际价值）
 nodeExporter:
   enabled: false

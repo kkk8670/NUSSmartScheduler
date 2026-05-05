@@ -2,13 +2,17 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from .core.config import settings
-from .core.tracing import get_langfuse, flush as lf_flush # add
+from .core.limiter import limiter
+from .core.tracing import get_langfuse, flush as lf_flush
 from .routers import locations, schedule, planner, oauth, calendar as cal_router
 from .routers.auth_router import router as auth_router
 from .agent import router as agent_router
 from .routers.multiagents_router import router as multi_router
+
 # Weaviate / VectorStore
 import weaviate
 from langchain_openai import OpenAIEmbeddings
@@ -20,12 +24,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ---- startup ----
+    get_langfuse()
 
-    # Langfuse：触发懒加载初始化，确认连通性
-    get_langfuse()    
-
-    # WEAVIATE_HOST Preferred environment variable for Docker / K8s / Cloud configuration;
-    # Default localhost for local development without setting this variable.
     wv_host = settings.WEAVIATE_HOST
     wv_http_port = settings.WEAVIATE_HTTP_PORT
     wv_grpc_port = settings.WEAVIATE_GRPC_PORT
@@ -49,17 +49,13 @@ async def lifespan(app: FastAPI):
         app.state.vectorstore = vs
 
     except Exception as e:
-        # 连不上 Weaviate 时不阻塞启动（memory/knowledge 功能降级）
         logger.warning(f"Weaviate unavailable ({wv_host}:{wv_http_port}): {e}. Memory/RAG features disabled.")
         app.state.weaviate_client = None
         app.state.vectorstore = None
 
     yield  # ---- running ----
 
-    # ---- shutdown ----
-    
-    # Langfuse：上报所有缓冲中的 trace
-    lf_flush()    
+    lf_flush()
 
     if getattr(app.state, "weaviate_client", None):
         app.state.weaviate_client.close()
@@ -68,6 +64,10 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="NUS Smart Scheduler", version="0.1.0", lifespan=lifespan)
+
+    # Rate limiting：按 IP 限流，超限返回 429
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     app.add_middleware(
         CORSMiddleware,
@@ -84,12 +84,11 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router, prefix="/auth", tags=["auth"])
     app.include_router(oauth.router, prefix="/auth/oauth", tags=["auth"])
- 
+
     app.include_router(cal_router.router, prefix="/api/calendar", tags=["calendar"])
     app.include_router(agent_router.router, prefix="/api/agent", tags=["agent"])
     app.include_router(multi_router, prefix="/api/multi")
- 
- 
+
     return app
 
 __all__ = ["create_app"]

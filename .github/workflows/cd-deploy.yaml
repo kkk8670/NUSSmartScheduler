@@ -12,50 +12,110 @@ on:
         options: [staging, production]
 
 env:
-  BACKEND_IMAGE: smart_scheduler_backend
-  FRONTEND_IMAGE: smart_scheduler_frontend
+  REGISTRY: asia-southeast1-docker.pkg.dev/nus-smart-scheduler/smart-scheduler
+  BACKEND_IMAGE: backend
+  FRONTEND_IMAGE: frontend
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+
     steps:
       - uses: actions/checkout@v4
 
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud + configure Docker auth
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: nus-smart-scheduler
+
+      - run: gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
+
       - name: Build images
         run: |
-          docker build -t $BACKEND_IMAGE:${{ github.sha }} ./BackEnd
-          docker build -t $FRONTEND_IMAGE:${{ github.sha }} --build-arg VITE_BACKEND_URL="" ./FrontEnd
+          docker build -t $REGISTRY/$BACKEND_IMAGE:${{ github.sha }} ./BackEnd
+          docker build -t $REGISTRY/$FRONTEND_IMAGE:${{ github.sha }} \
+            --build-arg VITE_BACKEND_URL="" ./FrontEnd
 
-      # ── staging: build only to verify that the image can be built successfully ──
+      - name: Push images
+        run: |
+          docker push $REGISTRY/$BACKEND_IMAGE:${{ github.sha }}
+          docker push $REGISTRY/$FRONTEND_IMAGE:${{ github.sha }}
+
+      # ── Staging：dry-run，验证 manifest 能被集群接受，不实际部署 ──────────
+      # 需要 GCP 连接（get-gke-credentials），但不会改动任何线上资源。
+      - name: Get GKE credentials (staging)
+        if: inputs.environment == 'staging'
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: scheduler-cluster
+          location: asia-southeast1
+          project_id: nus-smart-scheduler
+
+      - name: Staging dry-run
+        if: inputs.environment == 'staging'
+        run: |
+          cd deployment/k8s/overlays/cloud
+          kustomize edit set image \
+            "smart_scheduler_backend=$REGISTRY/$BACKEND_IMAGE:${{ github.sha }}" \
+            "smart_scheduler_frontend=$REGISTRY/$FRONTEND_IMAGE:${{ github.sha }}"
+          kubectl apply -k . --dry-run=server
+
       - name: Staging summary
         if: inputs.environment == 'staging'
         run: |
-          echo "## Staging Build ✅" >> $GITHUB_STEP_SUMMARY
-          echo "Images built successfully. Ready for production deploy." >> $GITHUB_STEP_SUMMARY
+          echo "## Staging dry-run ✅" >> $GITHUB_STEP_SUMMARY
+          echo "Images built and pushed. Manifest validated against cluster." >> $GITHUB_STEP_SUMMARY
+          echo "- **Image tag:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Ready to deploy → re-run with **production**." >> $GITHUB_STEP_SUMMARY
 
-      # ── production: push image + deploy to K8s groups ──
-      - name: Push images to registry
+      # ── Production：真实部署 ───────────────────────────────────────────────
+      - name: Get GKE credentials (production)
+        if: inputs.environment == 'production'
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: scheduler-cluster
+          location: asia-southeast1
+          project_id: nus-smart-scheduler
+
+      - name: Deploy to production
         if: inputs.environment == 'production'
         run: |
-          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ vars.REGISTRY_URL }} -u ${{ vars.REGISTRY_USER }} --password-stdin
-          docker tag $BACKEND_IMAGE:${{ github.sha }} ${{ vars.REGISTRY_URL }}/$BACKEND_IMAGE:${{ github.sha }}
-          docker tag $FRONTEND_IMAGE:${{ github.sha }} ${{ vars.REGISTRY_URL }}/$FRONTEND_IMAGE:${{ github.sha }}
-          docker push ${{ vars.REGISTRY_URL }}/$BACKEND_IMAGE:${{ github.sha }}
-          docker push ${{ vars.REGISTRY_URL }}/$FRONTEND_IMAGE:${{ github.sha }}
+          cd deployment/k8s/overlays/cloud
+          kustomize edit set image \
+            "smart_scheduler_backend=$REGISTRY/$BACKEND_IMAGE:${{ github.sha }}" \
+            "smart_scheduler_frontend=$REGISTRY/$FRONTEND_IMAGE:${{ github.sha }}"
 
-      - name: Deploy to K8s
+          kubectl apply -k .
+
+          kubectl create secret generic app-secret \
+            --from-literal=MYSQL_ROOT_PASSWORD="${{ secrets.MYSQL_PASSWORD }}" \
+            --from-literal=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            --from-literal=DB_URL="mysql+pymysql://root:${{ secrets.MYSQL_PASSWORD }}@mysql-svc:3306/${{ vars.MYSQL_DATABASE }}" \
+            --from-literal=LANGFUSE_PUBLIC_KEY="${{ secrets.LANGFUSE_PUBLIC_KEY }}" \
+            --from-literal=LANGFUSE_SECRET_KEY="${{ secrets.LANGFUSE_SECRET_KEY }}" \
+            --from-literal=LANGFUSE_BASE_URL="${{ vars.LANGFUSE_BASE_URL }}" \
+            --namespace=smart-scheduler \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl rollout status deployment/mysql    -n smart-scheduler --timeout=300s
+          kubectl rollout status deployment/weaviate -n smart-scheduler --timeout=300s
+          kubectl rollout status deployment/backend  -n smart-scheduler --timeout=180s
+          kubectl rollout status deployment/frontend -n smart-scheduler --timeout=180s
+
+      - name: Production summary
         if: inputs.environment == 'production'
         run: |
-          kubectl apply -f deployment/k8s/
-          kubectl set image deployment/backend backend=${{ vars.REGISTRY_URL }}/$BACKEND_IMAGE:${{ github.sha }} -n smart-scheduler
-          kubectl set image deployment/frontend frontend=${{ vars.REGISTRY_URL }}/$FRONTEND_IMAGE:${{ github.sha }} -n smart-scheduler
-          kubectl rollout status deployment/backend -n smart-scheduler --timeout=120s
-          kubectl rollout status deployment/frontend -n smart-scheduler --timeout=120s
-
-      - name: Deploy summary
-        run: |
-          echo "## Deploy Info" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image tag:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Production Deploy ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image tag:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          INGRESS_IP=$(kubectl get ingress smart-scheduler-ingress \
+            -n smart-scheduler \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+          echo "- **Ingress IP:** $INGRESS_IP" >> $GITHUB_STEP_SUMMARY

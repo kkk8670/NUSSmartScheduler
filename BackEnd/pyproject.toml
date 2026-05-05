@@ -35,4 +35,7 @@ dependencies = [
     "weaviate>=0.1.2",
     "pyjwt>=2.12.1",
     "python-multipart>=0.0.27",
+    "pytest-cov>=7.1.0",
+    "slowapi>=0.1.9",
+    "pymysql>=1.1.3",
 ]

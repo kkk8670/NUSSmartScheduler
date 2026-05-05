@@ -10,9 +10,7 @@ on:
     paths: [BackEnd/**]
 
 jobs:
-  # ══════════════════════════════════════
   # Job 1: Unit + API tests
-  # ══════════════════════════════════════
   test:
     runs-on: ubuntu-latest
     env:
@@ -47,12 +45,7 @@ jobs:
             BackEnd/coverage.xml
             BackEnd/htmlcov/
 
-  # ══════════════════════════════════════
   # Job 2: SAST – Static Application Security Testing (bandit)
-  # ══════════════════════════════════════
-  # Scans Python source for insecure patterns: eval(), pickle, subprocess
-  # with shell=True, hardcoded passwords, weak crypto, etc.
-  # Runs in parallel with `test` (no `needs:` dependency).
   sast-bandit:
     runs-on: ubuntu-latest
     defaults:
@@ -89,11 +82,7 @@ jobs:
             BackEnd/bandit-report.txt
             BackEnd/bandit-report.json
 
-  # ══════════════════════════════════════
   # Job 3: SCA – Software Composition Analysis (pip-audit)
-  # ══════════════════════════════════════
-  # Scans requirements.txt for dependencies with known CVEs (PyPI advisory DB).
-  # Runs in parallel with `test` and `sast-bandit`.
   sca-pip-audit:
     runs-on: ubuntu-latest
     defaults:
@@ -124,11 +113,7 @@ jobs:
             BackEnd/pip-audit-report.txt
             BackEnd/pip-audit-report.json
 
-  # ══════════════════════════════════════
   # Job 4: Build image + Container scan (Trivy)
-  # ══════════════════════════════════════
-  # Only runs after `test` passes (gate). Trivy fails the build on any
-  # CRITICAL or HIGH severity vulnerability in the final image.
   build-image:
     needs: [test, sast-bandit, sca-pip-audit]
     runs-on: ubuntu-latest

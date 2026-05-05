@@ -14,12 +14,7 @@ on:
     - cron: "0 3 * * 1"   # every Monday 03:00 UTC
 
 jobs:
-  # ══════════════════════════════════════
   # Job 1: Secret Scanning (gitleaks)
-  # ══════════════════════════════════════
-  # Scans the entire git history for accidentally committed secrets
-  # (API keys, JWT secrets, DB passwords, .env contents).
-  # This is *active* defense, complementing the *passive* .gitignore policy.
   secret-scan:
     runs-on: ubuntu-latest
     steps:
@@ -43,12 +38,7 @@ jobs:
           name: gitleaks-report
           path: gitleaks-report.sarif
 
-  # ══════════════════════════════════════
   # Job 2: IaC Scanning (checkov)
-  # ══════════════════════════════════════
-  # Scans Kubernetes manifests, Dockerfiles, and docker-compose files for
-  # security misconfigurations (root user, missing resource limits,
-  # missing securityContext, image with :latest tag, etc.)
   iac-scan:
     runs-on: ubuntu-latest
     steps:

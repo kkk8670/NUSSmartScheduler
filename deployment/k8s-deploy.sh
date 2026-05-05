@@ -1,148 +1,181 @@
 #!/usr/bin/env bash
 # deploy.sh – Build & deploy Smart Scheduler
-# Reads ENV_MODE from .env to decide deployment target
-
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_FILE="$PROJECT_ROOT/.env"
 MONITORING_DIR="$SCRIPT_DIR/k8s/monitoring"
+CLOUD_OVERLAY="$SCRIPT_DIR/k8s/overlays/cloud"
 
-# ── Check .env ───────────────────────────────────────────
-if [ ! -f "$ENV_FILE" ]; then
-  echo "ERROR: .env not found. Run: cp .env.example .env"
-  exit 1
+# ── 读取 .env ────────────────────────────────────────────
+if [ -f "$PROJECT_ROOT/.env" ]; then
+  set -a; source "$PROJECT_ROOT/.env"; set +a
 fi
 
-set -a; source "$ENV_FILE"; set +a
+# ══════════════════════════════════════════════════════════
+# 交互式菜单
+# ══════════════════════════════════════════════════════════
+echo ""
+echo "Smart Scheduler Deploy"
+echo "────────────────────────────────"
+echo "  1) local   – Docker Desktop / k3s"
+echo "  2) cloud   – GKE (HTTP, no TLS)"
+echo "  3) cloud   – GKE (HTTPS, needs domain + static IP)"
+echo "  4) docker  – Docker Compose only"
+echo "────────────────────────────────"
+printf "Choose [1-4]: "
+read -r CHOICE
 
-ENV_MODE="${ENV_MODE:-k8s-local}"
-echo ">>> ENV_MODE = $ENV_MODE"
+case "$CHOICE" in
+  1) MODE="local"       ;;
+  2) MODE="cloud-http"  ;;
+  3) MODE="cloud-https" ;;
+  4) MODE="docker"      ;;
+  *) echo "Invalid choice."; exit 1 ;;
+esac
 
-# ── Build images ─────────────────────────────────────────
-echo ">>> Building backend image..."
-docker build -t smart_scheduler_backend:1.0.0 "$PROJECT_ROOT/BackEnd"
-
-echo ">>> Building frontend image..."
-docker build -t smart_scheduler_frontend:1.0.0 \
-  --build-arg VITE_BACKEND_URL="" \
-  "$PROJECT_ROOT/FrontEnd"
+if [ "$MODE" = "cloud-https" ]; then
+  echo ""
+  printf "Domain (e.g. scheduler.example.com): "
+  read -r CLOUD_DOMAIN
+  printf "Static IP name (from: gcloud compute addresses list): "
+  read -r CLOUD_STATIC_IP_NAME
+fi
 
 # ══════════════════════════════════════════════════════════
-# deploy_monitoring
-# 参数：
-#   $1 = kubectl 命令
-#   $2 = storageClassName
-#   $3 = node-exporter 是否启用（"true" 或 "false"）
-#        Linux(k3s) 传 true，Mac/Win(Docker Desktop) 传 false
-#        原因：Docker Desktop 的虚拟机层不支持 node-exporter 需要的 mount 方式
+# Build images
 # ══════════════════════════════════════════════════════════
+if [ "$MODE" != "docker" ]; then
+  echo ""
+  echo ">>> Building images..."
+  docker system prune -f
+  docker build -t smart_scheduler_backend:1.0.0 "$PROJECT_ROOT/BackEnd"
+  docker build -t smart_scheduler_frontend:1.0.0 \
+    --build-arg VITE_BACKEND_URL="" \
+    "$PROJECT_ROOT/FrontEnd"
+fi
+
+# ══════════════════════════════════════════════════════════
+# 辅助函数
+# ══════════════════════════════════════════════════════════
+apply_secrets() {
+  local KUBECTL="$1"
+  echo ">>> Creating/updating app-secret..."
+  $KUBECTL create secret generic app-secret \
+    --from-literal=MYSQL_ROOT_PASSWORD="${MYSQL_PASSWORD}" \
+    --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY}" \
+    --from-literal=DB_URL="mysql+pymysql://root:${MYSQL_PASSWORD}@mysql-svc:3306/${MYSQL_DATABASE}" \
+    --from-literal=LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}" \
+    --from-literal=LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}" \
+    --from-literal=LANGFUSE_BASE_URL="${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}" \
+    --namespace=smart-scheduler \
+    --dry-run=client -o yaml | $KUBECTL apply -f -
+
+  echo ">>> Creating/updating mysql-initdb configmap..."
+  $KUBECTL create configmap mysql-initdb \
+    --from-file="$SCRIPT_DIR/sql/nus_event.sql" \
+    --namespace=smart-scheduler \
+    --dry-run=client -o yaml | $KUBECTL apply -f -
+}
+
+wait_rollout() {
+  local KUBECTL="$1"
+  local TIMEOUT="$2"
+  echo ">>> Waiting for rollout..."
+  $KUBECTL rollout status deployment/mysql    -n smart-scheduler --timeout="${TIMEOUT}"
+  $KUBECTL rollout status deployment/weaviate -n smart-scheduler --timeout="${TIMEOUT}"
+  $KUBECTL rollout status deployment/backend  -n smart-scheduler --timeout="${TIMEOUT}"
+  $KUBECTL rollout status deployment/frontend -n smart-scheduler --timeout="${TIMEOUT}"
+}
+
+push_images() {
+  local REGISTRY="$1"
+  local IMAGE_TAG="$2"
+  echo ">>> Pushing images (tag: $IMAGE_TAG)..."
+  gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
+  docker tag smart_scheduler_backend:1.0.0  "$REGISTRY/backend:$IMAGE_TAG"
+  docker tag smart_scheduler_frontend:1.0.0 "$REGISTRY/frontend:$IMAGE_TAG"
+  docker push "$REGISTRY/backend:$IMAGE_TAG"
+  docker push "$REGISTRY/frontend:$IMAGE_TAG"
+
+  ( cd "$CLOUD_OVERLAY"
+    kustomize edit set image \
+      "smart_scheduler_backend=$REGISTRY/backend:$IMAGE_TAG" \
+      "smart_scheduler_frontend=$REGISTRY/frontend:$IMAGE_TAG" )
+}
+
 deploy_monitoring() {
   local KUBECTL="$1"
   local STORAGE_CLASS="$2"
-  local NODE_EXPORTER_ENABLED="$3"   # ← 新增第三个参数
+  local NODE_EXPORTER="$3"
 
-  echo ""
-  echo ">>> [Monitoring] Applying monitoring namespace..."
+  echo ">>> [Monitoring] Applying namespace + NetworkPolicy..."
   $KUBECTL apply -f "$MONITORING_DIR/00-namespace.yaml"
-
-  echo ">>> [Monitoring] Applying NetworkPolicy..."
   $KUBECTL apply -f "$MONITORING_DIR/20-network-policy.yaml"
 
-  # ── 检查 helm 是否可用 ────────────────────────────────
   if ! command -v helm &>/dev/null; then
-    echo "WARNING: helm not found. Skipping Prometheus/Loki install."
-    echo "         Install helm: https://helm.sh/docs/intro/install/"
-    echo "         Then re-run deploy.sh to complete monitoring setup."
+    echo "WARNING: helm not found, skipping Prometheus/Loki."
     return
   fi
 
-  echo ">>> [Monitoring] Adding Helm repos..."
   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
-  helm repo add grafana              https://grafana.github.io/helm-charts             2>/dev/null || true
+  helm repo add grafana https://grafana.github.io/helm-charts 2>/dev/null || true
   helm repo update
 
-  # ── 检查上次是否安装失败，失败则先清理再重装 ──────────
-  # 原因：helm upgrade 对 failed 状态的 release 会报错，必须先 uninstall
-  if helm status kube-prom -n monitoring &>/dev/null; then
-    HELM_STATUS=$(helm status kube-prom -n monitoring --output json \
-      | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['status'])")
-    if [ "$HELM_STATUS" != "deployed" ]; then
-      echo ">>> [Monitoring] Previous kube-prom status: $HELM_STATUS. Cleaning up..."
-      helm uninstall kube-prom -n monitoring 2>/dev/null || true
+  for release in kube-prom loki; do
+    if helm status "$release" -n monitoring &>/dev/null; then
+      STATUS=$(helm status "$release" -n monitoring --output json \
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['status'])")
+      if [ "$STATUS" != "deployed" ]; then
+        helm uninstall "$release" -n monitoring 2>/dev/null || true
+      fi
     fi
-  fi
+  done
 
-  if helm status loki -n monitoring &>/dev/null; then
-    HELM_STATUS=$(helm status loki -n monitoring --output json \
-      | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['status'])")
-    if [ "$HELM_STATUS" != "deployed" ]; then
-      echo ">>> [Monitoring] Previous loki status: $HELM_STATUS. Cleaning up..."
-      helm uninstall loki -n monitoring 2>/dev/null || true
-    fi
-  fi
-
-  echo ">>> [Monitoring] Installing kube-prometheus-stack (Prometheus + Grafana)..."
+  echo ">>> [Monitoring] Installing kube-prometheus-stack..."
   helm upgrade --install kube-prom prometheus-community/kube-prometheus-stack \
     --namespace monitoring \
     --values "$MONITORING_DIR/helm-prometheus-values.yaml" \
     --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName="$STORAGE_CLASS" \
-    --set nodeExporter.enabled="$NODE_EXPORTER_ENABLED" \
-    --timeout 10m \
-    --wait
+    --set nodeExporter.enabled="$NODE_EXPORTER" \
+    --set grafana."grafana\.ini".smtp.password="${GRAFANA_SMTP_PASSWORD:-}" \
+    --set grafana."grafana\.ini".smtp.user="${GRAFANA_SMTP_USER:-}" \
+    --timeout 10m --wait
 
-  echo ">>> [Monitoring] Installing loki-stack (Loki + Promtail)..."
+  echo ">>> [Monitoring] Installing loki-stack..."
   helm upgrade --install loki grafana/loki-stack \
     --namespace monitoring \
     --values "$MONITORING_DIR/helm-loki-values.yaml" \
     --set loki.persistence.storageClassName="$STORAGE_CLASS" \
-    --timeout 10m \
-    --wait
+    --timeout 10m --wait
 
-  # ServiceMonitor 必须在 helm install 之后 apply
-  # 原因：ServiceMonitor 是 Prometheus Operator 的 CRD，
-  # helm install 才会注册这个 CRD，apply 必须在它之后
-  echo ">>> [Monitoring] Applying ServiceMonitor (after CRD is ready)..."
   $KUBECTL apply -f "$MONITORING_DIR/10-servicemonitor.yaml"
-
-  echo ""
-  echo "✅ Monitoring stack deployed."
-  echo "   Access Grafana:"
-  echo "     $KUBECTL port-forward -n monitoring svc/kube-prom-grafana 3000:80"
-  echo "   Then open: http://localhost:3000  (admin / smart-scheduler-admin)"
-  echo ""
-  echo "   Default datasources auto-configured:"
-  echo "     Prometheus → http://kube-prom-kube-prometheus-prometheus:9090"
-  echo "     Loki       → http://loki:3100"
+  echo "✅ Monitoring deployed."
+  echo "   $KUBECTL port-forward -n monitoring svc/kube-prom-grafana 3000:80"
 }
 
-# ── Deploy based on ENV_MODE ─────────────────────────────
-case "$ENV_MODE" in
+# ══════════════════════════════════════════════════════════
+# 部署逻辑
+# ══════════════════════════════════════════════════════════
+case "$MODE" in
 
-  k8s-local)
+  # ── 1) Local ────────────────────────────────────────────
+  local)
     OS="$(uname -s)"
     case "$OS" in
       Linux)
         KUBECTL="sudo k3s kubectl"
         STORAGE_CLASS="local-path"
-        NODE_EXPORTER_ENABLED="true"    # ← 新增：Linux 支持 node-exporter
-        echo ">>> OS=Linux (k3s)  storageClass=$STORAGE_CLASS"
-
-        echo ">>> Importing images into k3s..."
-        docker save smart_scheduler_backend:latest  | sudo k3s ctr images import -
-        docker save smart_scheduler_frontend:latest | sudo k3s ctr images import -
+        NODE_EXPORTER="true"
+        docker save smart_scheduler_backend:1.0.0  | sudo k3s ctr images import -
+        docker save smart_scheduler_frontend:1.0.0 | sudo k3s ctr images import -
         ;;
       Darwin|MINGW*|MSYS*|CYGWIN*)
         KUBECTL="kubectl"
         STORAGE_CLASS="hostpath"
-        NODE_EXPORTER_ENABLED="false"   # ← 新增：Mac/Win Docker Desktop 不支持
-        echo ">>> OS=$OS (Docker Desktop)  storageClass=$STORAGE_CLASS"
+        NODE_EXPORTER="false"
         ;;
-      *)
-        echo "ERROR: Unsupported OS '$OS'"
-        exit 1
-        ;;
+      *) echo "Unsupported OS: $OS"; exit 1 ;;
     esac
 
     cat > "$SCRIPT_DIR/k8s/overlays/k8s-local/storage-patch.yaml" <<EOF
@@ -151,58 +184,104 @@ case "$ENV_MODE" in
   value: $STORAGE_CLASS
 EOF
 
-    echo ">>> Applying K8s manifests..."
+    echo ">>> Applying manifests (local)..."
     $KUBECTL apply -k "$SCRIPT_DIR/k8s/overlays/k8s-local"
+    apply_secrets "$KUBECTL"
+    wait_rollout "$KUBECTL" "120s"
 
-    echo ">>> Creating secrets from .env..."
-    $KUBECTL create secret generic app-secret \
-      --from-literal=MYSQL_ROOT_PASSWORD="$MYSQL_PASSWORD" \
-      --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" \
-      --from-literal=DB_URL="mysql+pymysql://root:${MYSQL_PASSWORD}@mysql-svc:3306/${MYSQL_DATABASE}" \
-      --from-literal=LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY" \
-      --from-literal=LANGFUSE_SECRET_KEY="$LANGFUSE_SECRET_KEY" \
-      --from-literal=LANGFUSE_BASE_URL="https://us.cloud.langfuse.com" \
-      --namespace=smart-scheduler \
-      --dry-run=client -o yaml | $KUBECTL apply -f -
-
-    echo ">>> Creating mysql-initdb ConfigMap..."
-    $KUBECTL create configmap mysql-initdb \
-      --from-file="$SCRIPT_DIR/sql/nus_event.sql" \
-      --namespace=smart-scheduler \
-      --dry-run=client -o yaml | $KUBECTL apply -f -
-
-    echo ">>> Waiting for rollout..."
-    $KUBECTL rollout status deployment/mysql    -n smart-scheduler --timeout=120s
-    $KUBECTL rollout status deployment/backend  -n smart-scheduler --timeout=120s
-    $KUBECTL rollout status deployment/frontend -n smart-scheduler --timeout=120s
-
-    echo ">>> Done!"
-    $KUBECTL get pods -n smart-scheduler
     echo ""
-    echo "Access: $KUBECTL port-forward -n smart-scheduler svc/frontend-svc 8080:80"
-
-    # NODE_EXPORTER_ENABLED 作为第三个参数传入
-    deploy_monitoring "$KUBECTL" "$STORAGE_CLASS" "$NODE_EXPORTER_ENABLED"
+    echo "✅ Done."
+    echo "   $KUBECTL port-forward -n smart-scheduler svc/frontend-svc 8080:80"
+    deploy_monitoring "$KUBECTL" "$STORAGE_CLASS" "$NODE_EXPORTER"
     ;;
 
+  # ── 2) Cloud HTTP ───────────────────────────────────────
+  cloud-http)
+    REGISTRY="asia-southeast1-docker.pkg.dev/nus-smart-scheduler/smart-scheduler"
+    IMAGE_TAG="${GITHUB_SHA:-$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
+
+    push_images "$REGISTRY" "$IMAGE_TAG"
+
+    echo ">>> Applying manifests (cloud, HTTP)..."
+    kubectl apply -k "$CLOUD_OVERLAY"
+    apply_secrets "kubectl"
+    wait_rollout "kubectl" "300s"
+
+    echo ""
+    echo "✅ Done."
+    INGRESS_IP=$(kubectl get ingress smart-scheduler-ingress -n smart-scheduler \
+      -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+    echo "   Access: http://$INGRESS_IP"
+    deploy_monitoring "kubectl" "pd-balanced" "true"
+    ;;
+
+  # ── 3) Cloud HTTPS ──────────────────────────────────────
+  # overlay 文件不需要改。脚本在临时目录里：
+  #   a) 复制原 overlay
+  #   b) 追加 ManagedCertificate 资源到 32-gce-ingress-resources.yaml
+  #   c) 追加 TLS annotation patch 到 kustomization.yaml
+  # apply 完后临时目录自动删除，原文件不受影响。
+  cloud-https)
+    REGISTRY="asia-southeast1-docker.pkg.dev/nus-smart-scheduler/smart-scheduler"
+    IMAGE_TAG="${GITHUB_SHA:-$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
+
+    push_images "$REGISTRY" "$IMAGE_TAG"
+
+    RENDERED="$(mktemp -d)"
+    trap 'rm -rf "$RENDERED"' EXIT
+    cp -r "$CLOUD_OVERLAY/." "$RENDERED/"
+
+    # 追加 ManagedCertificate 到 ingress-resources 文件
+    cat >> "$RENDERED/32-gce-ingress-resources.yaml" << EOF
+
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: scheduler-managed-cert
+  namespace: smart-scheduler
+spec:
+  domains:
+    - ${CLOUD_DOMAIN}
+EOF
+
+    # 追加 TLS annotation patch 到 kustomization.yaml
+    cat >> "$RENDERED/kustomization.yaml" << EOF
+
+  - target:
+      kind: Ingress
+      name: smart-scheduler-ingress
+    patch: |-
+      - op: add
+        path: /metadata/annotations/networking.gke.io~1managed-certificates
+        value: "scheduler-managed-cert"
+      - op: add
+        path: /metadata/annotations/networking.gke.io~1static-ip
+        value: "${CLOUD_STATIC_IP_NAME}"
+      - op: add
+        path: /spec/rules/0/host
+        value: "${CLOUD_DOMAIN}"
+EOF
+
+    echo ">>> Applying manifests (cloud, HTTPS, domain: $CLOUD_DOMAIN)..."
+    kubectl apply -k "$RENDERED"
+    apply_secrets "kubectl"
+    wait_rollout "kubectl" "300s"
+
+    echo ""
+    echo "✅ Done."
+    echo "   Access: https://$CLOUD_DOMAIN"
+    echo "   Certificate provisioning takes 10-60 min:"
+    kubectl get managedcertificate -n smart-scheduler 2>/dev/null || true
+    deploy_monitoring "kubectl" "pd-balanced" "true"
+    ;;
+
+  # ── 4) Docker Compose ───────────────────────────────────
   docker)
-    echo ">>> Starting with Docker Compose (production)..."
+    echo ">>> Starting with Docker Compose..."
     cd "$SCRIPT_DIR"
     docker compose up -d --build
-    echo ">>> Done! Frontend: http://localhost  Backend: http://localhost:8000/docs"
+    echo "✅ Done. Frontend: http://localhost  Backend: http://localhost:8000/docs"
     ;;
 
-  cloud)
-    # KUBECTL="kubectl"
-    # STORAGE_CLASS="gp3"
-    # NODE_EXPORTER_ENABLED="true"
-    # deploy_monitoring "$KUBECTL" "$STORAGE_CLASS" "$NODE_EXPORTER_ENABLED"
-    echo ">>> Cloud deployment not yet configured. See comments in deploy.sh."
-    exit 1
-    ;;
-
-  *)
-    echo "ERROR: Unknown ENV_MODE '$ENV_MODE'. Use: k8s-local | docker | cloud"
-    exit 1
-    ;;
 esac

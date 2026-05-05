@@ -10,9 +10,7 @@ on:
     paths: [FrontEnd/**]
 
 jobs:
-  # ══════════════════════════════════════
   # Job 1: Lint + Build
-  # ══════════════════════════════════════
   lint-and-build:
     runs-on: ubuntu-latest
     defaults:
@@ -36,11 +34,7 @@ jobs:
       - name: Build
         run: npm run build
 
-  # ══════════════════════════════════════
   # Job 2: SCA – npm audit (frontend dependency scan)
-  # ══════════════════════════════════════
-  # Mirror of pip-audit on the backend side. Fails on high/critical
-  # vulnerabilities in npm dependencies.
   sca-npm-audit:
     runs-on: ubuntu-latest
     defaults:
@@ -73,9 +67,7 @@ jobs:
           name: npm-audit-report
           path: FrontEnd/npm-audit-report.json
 
-  # ══════════════════════════════════════
   # Job 3: Build image (gated on lint + audit)
-  # ══════════════════════════════════════
   build-image:
     needs: [lint-and-build, sca-npm-audit]
     runs-on: ubuntu-latest

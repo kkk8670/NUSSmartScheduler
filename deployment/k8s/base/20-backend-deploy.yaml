@@ -26,10 +26,6 @@ metadata:
   name: backend
   namespace: smart-scheduler
   annotations:
-    # Image-digest pinning requires a real container registry (e.g. ECR/GCR)
-    # which is out of scope for the local k3s/Docker-Desktop overlay. The
-    # production overlay (deployment/k8s/overlays/cloud) will add a Kustomize
-    # patch substituting the digest at apply time.
     checkov.io/skip1: CKV_K8S_43=Image digest pinning deferred to cloud overlay (see report 4.4)
     checkov.io/skip2: CKV_K8S_15=imagePullPolicy IfNotPresent is intentional for local dev (see report 4.2); cloud overlay patches to Always
     checkov.io/skip3: CKV_K8S_35=Env-based secret injection is project-wide convention (see report 2.4)

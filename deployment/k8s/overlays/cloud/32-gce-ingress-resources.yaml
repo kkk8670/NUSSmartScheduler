@@ -1,0 +1,50 @@
+# deployment/k8s/overlays/cloud/32-gce-ingress-resources.yaml
+#
+# ══ 无 TLS 版本（HTTP only）══════════════════════════════════════════════════
+# 适用场景：没有域名、或域名 DNS 尚未配好、或只需要 HTTP 访问。
+# 访问方式：http://<Ingress 分配的 IP>
+#
+# 与有 TLS 版的区别：
+#   - 删除了 ManagedCertificate 资源
+#   - kustomization.yaml 里的 Ingress patch 也不加 managed-certificates annotation
+#   - 不需要 CLOUD_DOMAIN / CLOUD_STATIC_IP_NAME 变量（域名和静态 IP 均可选）
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── BackendConfig for backend Pod ──────────────────────────────────────────
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: backend-backendconfig
+  namespace: smart-scheduler
+spec:
+  healthCheck:
+    type: HTTP
+    port: 8000
+    requestPath: /docs
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+  timeoutSec: 60
+  connectionDraining:
+    drainingTimeoutSec: 30
+
+---
+# ── BackendConfig for frontend Pod ─────────────────────────────────────────
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: frontend-backendconfig
+  namespace: smart-scheduler
+spec:
+  healthCheck:
+    type: HTTP
+    port: 8080
+    requestPath: /
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+  timeoutSec: 30
+  connectionDraining:
+    drainingTimeoutSec: 15
