@@ -232,7 +232,7 @@ EOF
     INGRESS_IP=$(kubectl get ingress smart-scheduler-ingress -n smart-scheduler \
       -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     echo "   Access: http://$INGRESS_IP"
-    deploy_monitoring "kubectl" "pd-balanced" "true"
+    deploy_monitoring "kubectl" "standard-rwo" "true"
     ;;
 
   # ── 3) Cloud HTTPS ──────────────────────────────────────
@@ -264,7 +264,7 @@ EOF
     echo "   Access: https://$CLOUD_DOMAIN"
     echo "   Certificate provisioning takes 10-60 min:"
     kubectl get managedcertificate -n smart-scheduler 2>/dev/null || true
-    deploy_monitoring "kubectl" "pd-balanced" "true"
+    deploy_monitoring "kubectl" "standard-rwo" "true"
     ;;
 
   # ── 4) Docker Compose ───────────────────────────────────

@@ -25,7 +25,7 @@ patches:
     patch: |-
       - op: replace
         path: /spec/storageClassName
-        value: pd-balanced
+        value: standard-rwo
 
   - target:
       kind: PersistentVolumeClaim
@@ -33,7 +33,7 @@ patches:
     patch: |-
       - op: replace
         path: /spec/storageClassName
-        value: pd-balanced
+        value: standard-rwo
 
   - target:
       kind: Ingress
