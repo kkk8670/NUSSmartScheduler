@@ -11,3 +11,4 @@ venv/
 !.env.example
 .coverage
 .python-version
+.deepeval/
