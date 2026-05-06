@@ -10,7 +10,7 @@ on:
     paths: [BackEnd/**]
 
 jobs:
-  # Job 1: Unit + API tests
+  # ── Job 1: 单元测试 ────────────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     env:
@@ -20,21 +20,28 @@ jobs:
     defaults:
       run:
         working-directory: BackEnd
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          enable-cache: true          # 缓存 uv 下载的包，加速后续 run
+
+      - name: Set up Python
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-cov httpx
+        # --frozen: 严格按 uv.lock，CI 环境下不允许隐式更新
+        # dev 依赖（pytest 等）在 pyproject.toml 的 [dev] group 里
+        run: uv sync --frozen
 
       - name: Run tests with coverage
-        # --cov produces both terminal and XML report (the latter for artifact)
-        run: pytest tests/ -v --tb=short --cov=app --cov-report=term --cov-report=xml --cov-report=html --ignore=tests/llm
+        run: |
+          uv run pytest tests/ -v --tb=short \
+            --cov=app --cov-report=term --cov-report=xml --cov-report=html \
+            --ignore=tests/llm
 
       - name: Upload coverage report
         if: always()
@@ -45,31 +52,31 @@ jobs:
             BackEnd/coverage.xml
             BackEnd/htmlcov/
 
-  # Job 2: SAST – Static Application Security Testing (bandit)
+  # ── Job 2: SAST – bandit ───────────────────────────────────────────────────
   sast-bandit:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: BackEnd
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
 
       - name: Install bandit
-        run: pip install bandit[toml]
+        run: uv tool install bandit[toml]
 
-      - name: Run bandit (medium+ severity, medium+ confidence)
-        # -ll  : only report MEDIUM and HIGH severity
-        # -ii  : only report MEDIUM and HIGH confidence (suppress noisy LOW-confidence findings)
-        # -f   : output format
-        # We don't use `--exit-zero` here because we want bandit to fail
-        # the job ONLY on medium+ findings. Tune severity later if too noisy.
+      - name: Run bandit
         run: |
-          bandit -r app/ -ll -ii -f txt -o bandit-report.txt || true
-          bandit -r app/ -ll -ii -f json -o bandit-report.json || true
+          uv tool run bandit -r app/ -ll -ii -f txt -o bandit-report.txt || true
+          uv tool run bandit -r app/ -ll -ii -f json -o bandit-report.json || true
           echo "=== Bandit Report ==="
           cat bandit-report.txt
 
@@ -82,41 +89,43 @@ jobs:
             BackEnd/bandit-report.txt
             BackEnd/bandit-report.json
 
-  # Job 3: SCA – Software Composition Analysis (pip-audit)
-  sca-pip-audit:
+  # ── Job 3: SCA – uv audit（替换 pip-audit）────────────────────────────────
+  # uv 内建漏洞扫描，直接读 uv.lock，比 pip-audit 更准确（不需要先 install）
+  sca-audit:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: BackEnd
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          enable-cache: true
 
-      - name: Run pip-audit
-        # --strict   : exit non-zero on any finding
-        # --desc     : include vulnerability description in output
-        # --format   : human-readable + JSON for the artifact
+      - name: Run uv audit
+        # 直接扫 uv.lock，无需安装任何包
+        # --format json 输出给 artifact，同时 tee 到 txt 方便看
         run: |
-          pip install pip-audit
-          pip-audit -r requirements.txt --desc --format=columns | tee pip-audit-report.txt
-          pip-audit -r requirements.txt --format=json --output=pip-audit-report.json || true
+          uv audit 2>&1 | tee uv-audit-report.txt
+          uv audit --format json > uv-audit-report.json || true
 
-      - name: Upload pip-audit report
+      - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pip-audit-report
+          name: uv-audit-report
           path: |
-            BackEnd/pip-audit-report.txt
-            BackEnd/pip-audit-report.json
+            BackEnd/uv-audit-report.txt
+            BackEnd/uv-audit-report.json
 
-  # Job 4: Build image + Container scan (Trivy)
+  # ── Job 4: 构建镜像 + Trivy 扫描 ──────────────────────────────────────────
   build-image:
-    needs: [test, sast-bandit, sca-pip-audit]
+    needs: [test, sast-bandit, sca-audit]
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -128,13 +137,11 @@ jobs:
         with:
           image-ref: smart_scheduler_backend:${{ github.sha }}
           format: table
-          exit-code: "1"            # fail the job on any CRITICAL/HIGH finding
+          exit-code: "1"
           severity: CRITICAL,HIGH
-          ignore-unfixed: true      # don't fail on CVEs that have no fix yet
+          ignore-unfixed: true
 
-      - name: Run Trivy image scan (json → file)
-        # Run a second time with format=json so we can upload as artifact.
-        # exit-code=0 because we've already gated above.
+      - name: Run Trivy image scan (json → artifact)
         if: always()
         uses: aquasecurity/trivy-action@master
         with:
