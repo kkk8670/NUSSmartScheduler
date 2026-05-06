@@ -1,13 +1,4 @@
 # deployment/k8s/overlays/cloud/kustomization.yaml
-#
-# ══ 无 TLS 版本（HTTP only）══════════════════════════════════════════════════
-# 与有 TLS 版的区别：
-#   - resources 引用无 TLS 的 32-gce-ingress-resources.yaml（无 ManagedCertificate）
-#   - Ingress patch 不加 managed-certificates / static-ip annotation
-#   - 不需要 CLOUD_DOMAIN / CLOUD_STATIC_IP_NAME 变量
-#   - 访问方式：http://<Ingress 分配的 IP>（GKE 自动分配临时外部 IP）
-#
-# deployment/k8s/overlays/cloud/kustomization.yaml
 # HTTP 版本，开箱即用，无需填写任何变量。
 # HTTPS 所需的 ManagedCertificate 和 static-ip annotation 由 deploy.sh 在运行时注入，
 # 不需要修改此文件。
@@ -34,7 +25,7 @@ patches:
     patch: |-
       - op: replace
         path: /spec/storageClassName
-        value: standard-rwo
+        value: pd-balanced
 
   - target:
       kind: PersistentVolumeClaim
@@ -42,7 +33,7 @@ patches:
     patch: |-
       - op: replace
         path: /spec/storageClassName
-        value: standard-rwo
+        value: pd-balanced
 
   - target:
       kind: Ingress
@@ -109,7 +100,3 @@ patches:
           name: mysql-storage
           persistentVolumeClaim:
             claimName: mysql-pvc
-      - op: remove
-        path: /spec/template/spec/securityContext/runAsUser
-      - op: remove
-        path: /spec/template/spec/securityContext/runAsGroup
