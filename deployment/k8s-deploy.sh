@@ -34,12 +34,22 @@ case "$CHOICE" in
   *) echo "Invalid choice."; exit 1 ;;
 esac
 
+# cloud-https 追问域名和静态 IP
 if [ "$MODE" = "cloud-https" ]; then
   echo ""
   printf "Domain (e.g. scheduler.example.com): "
   read -r CLOUD_DOMAIN
   printf "Static IP name (from: gcloud compute addresses list): "
   read -r CLOUD_STATIC_IP_NAME
+fi
+
+# 监控是否部署（docker 模式不适用）
+DEPLOY_MONITORING=false
+if [ "$MODE" != "docker" ]; then
+  echo ""
+  printf "Deploy monitoring stack? (Prometheus + Grafana + Loki) [y/N]: "
+  read -r MON_CHOICE
+  [[ "$MON_CHOICE" =~ ^[Yy]$ ]] && DEPLOY_MONITORING=true
 fi
 
 # ══════════════════════════════════════════════════════════
@@ -109,12 +119,21 @@ deploy_monitoring() {
   local STORAGE_CLASS="$2"
   local NODE_EXPORTER="$3"
 
+  if [ "$DEPLOY_MONITORING" = false ]; then
+    echo ""
+    echo ">>> Skipping monitoring stack."
+    echo "    Run 'make monitoring' later when ready."
+    return
+  fi
+
+  echo ""
   echo ">>> [Monitoring] Applying namespace + NetworkPolicy..."
   $KUBECTL apply -f "$MONITORING_DIR/00-namespace.yaml"
   $KUBECTL apply -f "$MONITORING_DIR/20-network-policy.yaml"
 
   if ! command -v helm &>/dev/null; then
     echo "WARNING: helm not found, skipping Prometheus/Loki."
+    echo "         Install helm and run 'make monitoring' to deploy later."
     return
   fi
 
@@ -150,8 +169,7 @@ deploy_monitoring() {
     --timeout 10m --wait
 
   $KUBECTL apply -f "$MONITORING_DIR/10-servicemonitor.yaml"
-  echo "✅ Monitoring deployed."
-  echo "   $KUBECTL port-forward -n monitoring svc/kube-prom-grafana 3000:80"
+  echo "✅ Monitoring deployed. Run 'make open-grafana' to access Grafana."
 }
 
 # ══════════════════════════════════════════════════════════
@@ -190,8 +208,8 @@ EOF
     wait_rollout "$KUBECTL" "120s"
 
     echo ""
-    echo "✅ Done."
-    echo "   $KUBECTL port-forward -n smart-scheduler svc/frontend-svc 8080:80"
+    echo "✅ Application is running."
+    echo "   Run 'make open-frontend' to access the app."
     deploy_monitoring "$KUBECTL" "$STORAGE_CLASS" "$NODE_EXPORTER"
     ;;
 
@@ -208,7 +226,7 @@ EOF
     wait_rollout "kubectl" "300s"
 
     echo ""
-    echo "✅ Done."
+    echo "✅ Application is running."
     INGRESS_IP=$(kubectl get ingress smart-scheduler-ingress -n smart-scheduler \
       -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
     echo "   Access: http://$INGRESS_IP"
@@ -216,11 +234,6 @@ EOF
     ;;
 
   # ── 3) Cloud HTTPS ──────────────────────────────────────
-  # overlay 文件不需要改。脚本在临时目录里：
-  #   a) 复制原 overlay
-  #   b) 追加 ManagedCertificate 资源到 32-gce-ingress-resources.yaml
-  #   c) 追加 TLS annotation patch 到 kustomization.yaml
-  # apply 完后临时目录自动删除，原文件不受影响。
   cloud-https)
     REGISTRY="asia-southeast1-docker.pkg.dev/nus-smart-scheduler/smart-scheduler"
     IMAGE_TAG="${GITHUB_SHA:-$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
@@ -230,38 +243,13 @@ EOF
     RENDERED="$(mktemp -d)"
     trap 'rm -rf "$RENDERED"' EXIT
     cp -r "$CLOUD_OVERLAY/." "$RENDERED/"
-
-    # 追加 ManagedCertificate 到 ingress-resources 文件
-    cat >> "$RENDERED/32-gce-ingress-resources.yaml" << EOF
-
----
-apiVersion: networking.gke.io/v1
-kind: ManagedCertificate
-metadata:
-  name: scheduler-managed-cert
-  namespace: smart-scheduler
-spec:
-  domains:
-    - ${CLOUD_DOMAIN}
-EOF
-
-    # 追加 TLS annotation patch 到 kustomization.yaml
-    cat >> "$RENDERED/kustomization.yaml" << EOF
-
-  - target:
-      kind: Ingress
-      name: smart-scheduler-ingress
-    patch: |-
-      - op: add
-        path: /metadata/annotations/networking.gke.io~1managed-certificates
-        value: "scheduler-managed-cert"
-      - op: add
-        path: /metadata/annotations/networking.gke.io~1static-ip
-        value: "${CLOUD_STATIC_IP_NAME}"
-      - op: add
-        path: /spec/rules/0/host
-        value: "${CLOUD_DOMAIN}"
-EOF
+    export CLOUD_DOMAIN CLOUD_STATIC_IP_NAME
+    envsubst '${CLOUD_DOMAIN} ${CLOUD_STATIC_IP_NAME}' \
+      < "$CLOUD_OVERLAY/kustomization.yaml" \
+      > "$RENDERED/kustomization.yaml"
+    envsubst '${CLOUD_DOMAIN}' \
+      < "$CLOUD_OVERLAY/32-gce-ingress-resources.yaml" \
+      > "$RENDERED/32-gce-ingress-resources.yaml"
 
     echo ">>> Applying manifests (cloud, HTTPS, domain: $CLOUD_DOMAIN)..."
     kubectl apply -k "$RENDERED"
@@ -269,7 +257,7 @@ EOF
     wait_rollout "kubectl" "300s"
 
     echo ""
-    echo "✅ Done."
+    echo "✅ Application is running."
     echo "   Access: https://$CLOUD_DOMAIN"
     echo "   Certificate provisioning takes 10-60 min:"
     kubectl get managedcertificate -n smart-scheduler 2>/dev/null || true
