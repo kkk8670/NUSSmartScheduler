@@ -84,6 +84,8 @@ jobs:
           location: asia-southeast1
           project_id: nus-smart-scheduler
 
+      # Secret 和 ConfigMap 必须在 kubectl apply 之前建好，
+      # 否则 MySQL Pod 起来后找不到 ConfigMap 会一直 Pending（死锁）
       - name: Deploy to production
         if: inputs.environment == 'production'
         run: |
@@ -91,9 +93,6 @@ jobs:
           kustomize edit set image \
             "smart_scheduler_backend=$REGISTRY/$BACKEND_IMAGE:${{ github.sha }}" \
             "smart_scheduler_frontend=$REGISTRY/$FRONTEND_IMAGE:${{ github.sha }}"
-
-          kubectl apply -k .
-
           kubectl create secret generic app-secret \
             --from-literal=MYSQL_ROOT_PASSWORD="${{ secrets.MYSQL_PASSWORD }}" \
             --from-literal=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
@@ -103,6 +102,13 @@ jobs:
             --from-literal=LANGFUSE_BASE_URL="${{ vars.LANGFUSE_BASE_URL }}" \
             --namespace=smart-scheduler \
             --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create configmap mysql-initdb \
+            --from-file=../../sql/nus_event.sql \
+            --namespace=smart-scheduler \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl apply -k .
 
           kubectl rollout status deployment/mysql    -n smart-scheduler --timeout=300s
           kubectl rollout status deployment/weaviate -n smart-scheduler --timeout=300s

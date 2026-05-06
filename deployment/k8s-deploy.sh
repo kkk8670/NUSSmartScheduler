@@ -202,9 +202,10 @@ case "$MODE" in
   value: $STORAGE_CLASS
 EOF
 
+    apply_secrets "$KUBECTL"
+
     echo ">>> Applying manifests (local)..."
     $KUBECTL apply -k "$SCRIPT_DIR/k8s/overlays/k8s-local"
-    apply_secrets "$KUBECTL"
     wait_rollout "$KUBECTL" "120s"
 
     echo ""
@@ -220,9 +221,10 @@ EOF
 
     push_images "$REGISTRY" "$IMAGE_TAG"
 
+    apply_secrets "kubectl"
+
     echo ">>> Applying manifests (cloud, HTTP)..."
     kubectl apply -k "$CLOUD_OVERLAY"
-    apply_secrets "kubectl"
     wait_rollout "kubectl" "300s"
 
     echo ""
@@ -251,9 +253,10 @@ EOF
       < "$CLOUD_OVERLAY/32-gce-ingress-resources.yaml" \
       > "$RENDERED/32-gce-ingress-resources.yaml"
 
+    apply_secrets "kubectl"
+
     echo ">>> Applying manifests (cloud, HTTPS, domain: $CLOUD_DOMAIN)..."
     kubectl apply -k "$RENDERED"
-    apply_secrets "kubectl"
     wait_rollout "kubectl" "300s"
 
     echo ""
