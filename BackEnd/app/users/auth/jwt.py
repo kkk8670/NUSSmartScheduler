@@ -1,3 +1,4 @@
+# app/users/auth/jwt.py
 import os
 from datetime import datetime, timedelta, timezone
 import jwt  # 1. 导入名从 jose 改为 jwt

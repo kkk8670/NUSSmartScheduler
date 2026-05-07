@@ -1,3 +1,4 @@
+# app/routers/auth_router.py
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
