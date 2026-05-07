@@ -54,13 +54,16 @@ case "$ACTION" in
     echo ">>> Scaling down Weaviate..."
     $KUBECTL scale deployment weaviate --replicas=0 -n smart-scheduler
 
+    echo ">>> Waiting for Weaviate Pod to fully stop..."
+    $KUBECTL wait --for=delete pod -l app=weaviate       -n smart-scheduler --timeout=60s 2>/dev/null || true
+
     echo ">>> Clearing PVC data..."
     $KUBECTL run weaviate-reset --image=busybox:1.36 \
       --restart=Never \
       --overrides='{
         "spec": {
           "containers": [{"name":"weaviate-reset","image":"busybox:1.36",
-            "command":["sh","-c","rm -rf /data/* && echo done"],
+            "command":["sh","-c","rm -rf /data/* && echo cleared && ls /data/"],
             "volumeMounts":[{"name":"data","mountPath":"/data"}]}],
           "volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"weaviate-pvc"}}]
         }

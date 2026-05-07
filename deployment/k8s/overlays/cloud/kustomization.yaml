@@ -13,10 +13,10 @@ resources:
 images:
   - name: smart_scheduler_backend
     newName: asia-southeast1-docker.pkg.dev/nus-smart-scheduler/smart-scheduler/backend
-    newTag: "1.0.0"
+    newTag: "latest"
   - name: smart_scheduler_frontend
     newName: asia-southeast1-docker.pkg.dev/nus-smart-scheduler/smart-scheduler/frontend
-    newTag: "1.0.0"
+    newTag: "latest"
 
 patches:
   - target:
@@ -39,35 +39,47 @@ patches:
       kind: Ingress
       name: smart-scheduler-ingress
     patch: |-
-      - op: replace
-        path: /spec/ingressClassName
-        value: gce
-      - op: remove
-        path: /spec/rules/0/host
-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: smart-scheduler-ingress
+        annotations:
+          kubernetes.io/ingress.class: "gce"
+      spec:
+        ingressClassName: gce
+        rules:
+          - http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: frontend-svc
+                      port:
+                        number: 80
   - target:
       kind: Service
       name: backend-svc
     patch: |-
-      - op: replace
-        path: /spec/type
-        value: NodePort
-      - op: add
-        path: /metadata/annotations
-        value:
-          cloud.google.com/backend-config: '{"default":"backend-backendconfig"}'
-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: backend-svc
+      spec:
+        type: ClusterIP
+        
   - target:
       kind: Service
       name: frontend-svc
     patch: |-
-      - op: replace
-        path: /spec/type
-        value: NodePort
-      - op: add
-        path: /metadata/annotations
-        value:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: frontend-svc
+        annotations:
           cloud.google.com/backend-config: '{"default":"frontend-backendconfig"}'
+      spec:
+        type: NodePort
 
   - target:
       kind: Deployment

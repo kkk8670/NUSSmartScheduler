@@ -82,8 +82,8 @@ def create_app() -> FastAPI:
     app.include_router(schedule.router, prefix="/api/schedule", tags=["schedule"])
     app.include_router(planner.router, prefix="/api/planner", tags=["planner"])
 
-    app.include_router(auth_router, prefix="/auth", tags=["auth"])
-    app.include_router(oauth.router, prefix="/auth/oauth", tags=["auth"])
+    app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+    app.include_router(oauth.router, prefix="/api/auth/oauth", tags=["auth"])
 
     app.include_router(cal_router.router, prefix="/api/calendar", tags=["calendar"])
     app.include_router(agent_router.router, prefix="/api/agent", tags=["agent"])

@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import "./agent.css";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "";
 const ENDPOINTS = {
-  LOGIN: "/auth/login",
-  REGISTER: "/auth/register",
+  LOGIN: "/api/auth/login",
+  REGISTER: "/api/auth/register",
 };
 
 async function http(path, { method = "GET", body, token } = {}) {

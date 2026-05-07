@@ -44,8 +44,13 @@ jobs:
 
       - name: Push images
         run: |
+          # 同时推 git SHA tag（用于追溯）和 latest tag（用于 kustomization 默认值）
           docker push $REGISTRY/$BACKEND_IMAGE:${{ github.sha }}
           docker push $REGISTRY/$FRONTEND_IMAGE:${{ github.sha }}
+          docker tag $REGISTRY/$BACKEND_IMAGE:${{ github.sha }} $REGISTRY/$BACKEND_IMAGE:latest
+          docker tag $REGISTRY/$FRONTEND_IMAGE:${{ github.sha }} $REGISTRY/$FRONTEND_IMAGE:latest
+          docker push $REGISTRY/$BACKEND_IMAGE:latest
+          docker push $REGISTRY/$FRONTEND_IMAGE:latest
 
       # ── Staging：dry-run，验证 manifest 能被集群接受，不实际部署 ──────────
       # 需要 GCP 连接（get-gke-credentials），但不会改动任何线上资源。

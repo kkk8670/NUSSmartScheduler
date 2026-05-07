@@ -173,7 +173,7 @@ export default function AgentChatLite() {
         };
 
         try {
-            const res = await fetch("http://localhost:8000/api/agent/chat/react", {
+            const res = await fetch("/api/agent/chat/react", {
                 method: "POST",
                 headers,
                 body: JSON.stringify({ prompt: t }),
