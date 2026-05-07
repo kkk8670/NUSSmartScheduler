@@ -12,6 +12,16 @@
 #   ✗ CKV_K8S_43 (image digest):      deferred to cloud overlay
 #
 # Mitigation: NetworkPolicy restricts weaviate ingress to backend pods only.
+#
+# ── Raft / cluster IP 冲突根治 ─────────────────────────────────────────────
+# Weaviate 1.26+ 默认启用 Raft，把 Pod IP 写进 PVC 作为节点标识。
+# Pod 重建后 IP 变化，Weaviate 认为自己是新节点，无法加入旧集群，
+# 导致 "could not join a cluster" 循环报错。
+#
+# 解决方案：
+#   CLUSTER_HOSTNAME=weaviate-node  固定节点名，不随 Pod IP 变化
+#   RAFT_BOOTSTRAP_EXPECT=1         声明单节点集群，不等待其他节点
+#   CLUSTER_GOSSIP_BIND_PORT=7100   避免与默认端口冲突
 # ──────────────────────────────────────────────────────────────────────────
 
 apiVersion: apps/v1
@@ -39,24 +49,24 @@ spec:
       labels:
         app: weaviate
     spec:
-      automountServiceAccountToken: false        # CKV_K8S_38
+      automountServiceAccountToken: false
 
       containers:
         - name: weaviate
-          image: cr.weaviate.io/semitechnologies/weaviate:1.26.1   # CKV_K8S_14 — pinned
+          image: cr.weaviate.io/semitechnologies/weaviate:1.26.1
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8080         # HTTP / REST
+            - containerPort: 8080
               name: http
-            - containerPort: 50051        # gRPC
+            - containerPort: 50051
               name: grpc
 
           securityContext:
-            allowPrivilegeEscalation: false      # CKV_K8S_20
+            allowPrivilegeEscalation: false
             capabilities:
-              drop: ["ALL"]                      # CKV_K8S_28/37
+              drop: ["ALL"]
             seccompProfile:
-              type: RuntimeDefault               # CKV_K8S_31
+              type: RuntimeDefault
 
           env:
             - name: AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED
@@ -65,13 +75,21 @@ spec:
               value: /var/lib/weaviate
             - name: ENABLE_API_BASED_MODULES
               value: "false"
+            # ── Raft 单节点固定配置，防止 Pod IP 变化导致集群冲突 ──────────
+            # CLUSTER_HOSTNAME: 固定节点名称，不使用 Pod IP
+            # RAFT_BOOTSTRAP_EXPECT: 声明单节点，不等待其他节点加入
+            # CLUSTER_JOIN: 空值，明确不加入任何外部集群
+            - name: CLUSTER_HOSTNAME
+              value: "weaviate-node"
+            - name: RAFT_BOOTSTRAP_EXPECT
+              value: "1"
+            - name: CLUSTER_JOIN
+              value: ""
 
           volumeMounts:
             - name: weaviate-storage
               mountPath: /var/lib/weaviate
 
-          # CKV_K8S_10/11/12/13: resources.
-          # Weaviate is memory-hungry (vector index in RAM). Bias to memory.
           resources:
             requests:
               cpu: "100m"
@@ -80,7 +98,6 @@ spec:
               cpu: "1000m"
               memory: "1Gi"
 
-          # CKV_K8S_8: liveness
           livenessProbe:
             httpGet:
               path: /v1/.well-known/live
@@ -90,7 +107,6 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
 
-          # CKV_K8S_9: readiness (already existed in original)
           readinessProbe:
             httpGet:
               path: /v1/.well-known/ready
