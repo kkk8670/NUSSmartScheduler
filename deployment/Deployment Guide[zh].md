@@ -318,16 +318,30 @@ make open-grafana
 
 ## 日常维护
 
+### 重新部署需要做什么
+
+**正常情况（改了代码或配置）：** 直接在 GitHub Actions 触发 CD → production，不需要手动操作任何东西。
+
+**需要手动介入的特殊情况：**
+
+| 情况 | 命令 |
+|------|------|
+| Weaviate 卡在旧集群 IP | `bash deployment/k8s-ops.sh reset-weaviate` |
+| 需要暂时关掉节省资源 | `bash deployment/k8s-ops.sh stop` |
+| 完全重置重新部署 | `bash deployment/k8s-ops.sh clean-app` 然后跑 CD |
+
 ### K8s 状态管理（`k8s-ops.sh`）
 
 ```bash
-bash deployment/k8s-ops.sh status      # 查看所有 Pod 状态
+bash deployment/k8s-ops.sh status          # 查看所有 Pod、PVC、Ingress 状态
 
-bash deployment/k8s-ops.sh stop        # 暂停所有 Pod（数据保留）
-bash deployment/k8s-ops.sh start       # 恢复
+bash deployment/k8s-ops.sh stop            # 暂停所有 Pod（数据保留）
+bash deployment/k8s-ops.sh start           # 恢复
 
-bash deployment/k8s-ops.sh clean-app   # 删除应用 namespace（⚠️ 数据清空），监控保留
-bash deployment/k8s-ops.sh clean-all   # 删除应用 + 监控（⚠️ 全部清空）
+bash deployment/k8s-ops.sh reset-weaviate  # 清空 Weaviate 数据（集群脏数据时用）
+
+bash deployment/k8s-ops.sh clean-app       # 删除应用 namespace（⚠️ 数据清空），监控保留
+bash deployment/k8s-ops.sh clean-all       # 删除应用 + 监控（⚠️ 全部清空）
 ```
 
 `clean-app` 之后用 `bash deployment/k8s-deploy.sh` 重新部署。

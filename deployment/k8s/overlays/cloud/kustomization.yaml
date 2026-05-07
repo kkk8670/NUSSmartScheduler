@@ -49,6 +49,9 @@ patches:
       kind: Service
       name: backend-svc
     patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
       - op: add
         path: /metadata/annotations
         value:
@@ -58,6 +61,9 @@ patches:
       kind: Service
       name: frontend-svc
     patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
       - op: add
         path: /metadata/annotations
         value:
