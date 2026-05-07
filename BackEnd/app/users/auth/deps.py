@@ -1,3 +1,4 @@
+# app/users/auth/deps.py
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -6,7 +7,7 @@ from app.users.repository import UserRepository
 from app.users.auth.jwt import get_subject, JWTAuthError
 
 # 与 /auth/login 的 tokenUrl 保持一致
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 def get_current_user(token: str = Depends(oauth2_scheme),
                      db: Session = Depends(get_db)):

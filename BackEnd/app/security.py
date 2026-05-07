@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 SECRET_KEY = "CHANGE_ME"
 ALGORITHM = "HS256"
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 class TokenData(BaseModel):
     sub: str
